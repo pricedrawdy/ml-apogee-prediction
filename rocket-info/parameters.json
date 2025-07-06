@@ -1,0 +1,130 @@
+{
+    "elliptical_fins": {},
+    "environment": {
+        "base_pressure": 100745.07275,
+        "base_temperature": 308.15000000000003,
+        "date": null,
+        "elevation": 60.96,
+        "geodetic_method": "spherical",
+        "latitude": 32.9428,
+        "longitude": -106.912,
+        "wind_average": 5.36448,
+        "wind_turbulence": 0.0
+    },
+    "flight": {
+        "heading": 90.0,
+        "inclination": 86.0,
+        "rail_length": 4.318
+    },
+    "id": {
+        "comment": "Check ",
+        "designer": "Luke Krick ",
+        "filepath": "rocket.ork",
+        "rocket_name": "Rocket"
+    },
+    "motors": {
+        "center_of_dry_mass_position": 0,
+        "coordinate_system_orientation": "nozzle_to_combustion_chamber",
+        "dry_inertia": [
+            0,
+            0,
+            0
+        ],
+        "dry_mass": 0,
+        "grain_density": 1115.3675185630957,
+        "grain_initial_height": 0.597,
+        "grain_initial_inner_radius": 0.0245,
+        "grain_number": 1,
+        "grain_outer_radius": 0.049,
+        "grain_separation": 0,
+        "grains_center_of_mass_position": 0,
+        "nozzle_position": -0.2985,
+        "nozzle_radius": 0.036750000000000005,
+        "position": 3.1035067693124514,
+        "throat_radius": 0.0245,
+        "thrust_source": ".\\thrust_source.csv"
+    },
+    "nosecones": {
+        "base_radius": 0.078359,
+        "kind": "Von Karman",
+        "length": 0.9270999999999999,
+        "name": "5:1 Ogive Nose Cone Fiberglass",
+        "position": 0.0
+    },
+    "parachutes": {
+        "0": {
+            "area": 4.669816127362538,
+            "cd": 2.2,
+            "cds": 10.273595480197585,
+            "deploy_altitude": 365.76,
+            "deploy_delay": 0.0,
+            "deploy_event": "altitude",
+            "name": "Main Bag with Main Chute"
+        },
+        "1": {
+            "area": 0.29186350796015864,
+            "cd": 1.6,
+            "cds": 0.4669816127362538,
+            "deploy_altitude": null,
+            "deploy_delay": 0.0,
+            "deploy_event": "apogee",
+            "name": "Drogue Bag with Drogue Parachute"
+        }
+    },
+    "rail_buttons": {
+        "angular_position": 0.0,
+        "distance": 1.6301784000000001,
+        "lower_position": 4.2082784,
+        "name": "Forward Rail Button",
+        "upper_position": 2.5781
+    },
+    "rocket": {
+        "center_of_mass_without_propellant": 2.122,
+        "coordinate_system_orientation": "nose_to_tail",
+        "drag_curve": ".\\drag_curve.csv",
+        "inertia": [
+            0.014,
+            0.014,
+            4.458
+        ],
+        "mass": 21.215,
+        "radius": 0.078359
+    },
+    "stored_results": {
+        "burnout_stability_margin": 3.546,
+        "flight_time": 175.539,
+        "ground_hit_velocity": 5.842,
+        "launch_rod_velocity": 25.834,
+        "max_acceleration": 91.374,
+        "max_altitude": 3048.268,
+        "max_mach": 0.801,
+        "max_stability_margin": 3.672,
+        "max_thrust": 2430.73,
+        "max_velocity": 278.858,
+        "min_stability_margin": 0.851,
+        "time_to_apogee": 24.751
+    },
+    "tails": {
+        "0": {
+            "bottom_radius": 0.05505,
+            "length": 0.1016,
+            "name": "Boattail",
+            "position": 3.324225,
+            "top_radius": 0.078359
+        }
+    },
+    "trapezoidal_fins": {
+        "0": {
+            "cant_angle": 0.0,
+            "name": "Main Fins",
+            "number": 3,
+            "position": 3.0275276000000004,
+            "root_chord": 0.29999939999999997,
+            "section": "rounded",
+            "span": 0.20246339999999996,
+            "sweep_angle": null,
+            "sweep_length": 0.18542,
+            "tip_chord": 0.100076
+        }
+    }
+}

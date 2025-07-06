@@ -1,0 +1,12 @@
+__pycache__/
+*.pkl
+*.pth
+.vscode/
+.DS_Store
+data/processed/
+data/scalers/
+models/apogee_mlp_model.pth
+venv/
+old-datasets
+old-scripts
+block-diagrams
