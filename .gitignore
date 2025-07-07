@@ -9,4 +9,3 @@ models/apogee_mlp_model.pth
 venv/
 old-datasets
 old-scripts
-block-diagrams
