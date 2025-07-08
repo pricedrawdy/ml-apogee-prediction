@@ -1,4 +1,5 @@
 # %%
+from pathlib import Path
 import torch
 import joblib
 import pandas as pd
@@ -7,8 +8,11 @@ from sklearn.metrics import mean_squared_error
 
 # %%
 # === Load trained model and scalers ===
-input_scaler = joblib.load("data/scalers/apogee_input_scaler.pkl")
-target_scaler = joblib.load("data/scalers/apogee_target_scaler.pkl")
+scalers_dir = Path(__file__).resolve().parent.parent / "data" / "scalers" 
+model_dir = Path(__file__).resolve().parent.parent / "models"
+
+input_scaler = joblib.load(scalers_dir / "apogee_input_scaler.pkl")
+target_scaler = joblib.load(scalers_dir / "apogee_target_scaler.pkl")
 
 class ApogeeMLP(torch.nn.Module):
     def __init__(self, input_dim):
@@ -26,12 +30,15 @@ class ApogeeMLP(torch.nn.Module):
 
 # Load model weights
 model = ApogeeMLP(input_dim=400)  # adjust if your input shape differs
-model.load_state_dict(torch.load("apogee_mlp_model.pth"))
+model.load_state_dict(torch.load(model_dir / "apogee_mlp_model.pth"))
 model.eval()
 
 # %%
 # === Load the dataset ===
-df = pd.read_csv("sliding_test_by_flight.csv")
+input_csv = "sliding_test_by_flight.csv"  # The test dataset file
+input_csv_dir = Path(__file__).resolve().parent.parent / "data" / "processed"
+df = pd.read_csv(input_csv_dir / input_csv)
+
 X = df.drop(columns=["Apogee"]).values
 y_true = df["Apogee"].values.reshape(-1, 1)
 

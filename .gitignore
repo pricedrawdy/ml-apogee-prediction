@@ -3,7 +3,7 @@ __pycache__/
 *.pth
 .vscode/
 .DS_Store
-data/processed/
+data/processed/sliding_train_by_flight.csv
 data/scalers/
 models/apogee_mlp_model.pth
 venv/

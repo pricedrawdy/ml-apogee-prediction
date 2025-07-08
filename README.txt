@@ -56,23 +56,28 @@ This repository contains a machine learning pipeline for predicting rocket apoge
 ```
 
 .
-├── data/                   # All datasets (raw, sliding windows, etc.)
-│   ├── batch\_dataset\_v1.csv
-│   ├── sliding\_train\_by\_flight.csv
-│   └── sliding\_test\_by\_flight.csv
-├── models/                 # Trained model and scalers
-│   ├── apogee\_mlp\_model.pth
-│   ├── apogee\_input\_scaler.pkl
-│   └── apogee\_target\_scaler.pkl
-├── scripts/                # Source code
-│   ├── sliding\_window\_generator.py
-│   ├── train\_mlp\_model.py
-│   └── evaluate\_prediction.py
-├── notebooks/              # Optional exploratory notebooks
-│   └── analysis.ipynb
-├── venv/                   # (optional) Python virtual environment
+apogee-prediction/
+├── README.md
 ├── requirements.txt
-└── README.md
+├── .gitignore
+├── data/
+│   ├── raw/                     # Original CSV with all 120+ flights
+│   ├── processed/               # Train/test CSVs created by sliding window generator
+│   └── scalers/                 # Scaler .pkl files
+├── models/
+│   ├── apogee_mlp_model.pth     # Saved model weights
+│   └── architecture.py          # MLP class (ApogeeMLP)
+├── scripts/
+│   ├── sliding_window_generator.py
+│   ├── train_model.py
+│   ├── evaluate_apogee.py       # Your test script (refactored for multi-flight)
+│   └── helpers.py               # Shared functions (e.g., load_scalers, plot_preds)
+├── notebooks/
+│   └── analysis.ipynb           # For interactive EDA, RMSE vs time, etc.
+└── deploy/
+    ├── onboard_pipeline.py      # Minimal real-time prediction for flight computer
+    └── config.yaml              # Configs (e.g., scaler paths, window size)
+
 
 ````
 
