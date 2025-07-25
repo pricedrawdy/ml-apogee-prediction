@@ -25,7 +25,7 @@ initial_cols = df_full.shape[1]
 df = df_full.loc[:, (df_full != 0).any(axis=0)]
 
 # Count and report how many were removed
-removed_cols = initial_cols - df_full.shape[1]
+removed_cols = initial_cols - df.shape[1]
 print(f"Removed {removed_cols} all-zero columns.")
 
 # %%
@@ -36,12 +36,12 @@ stride = int(step_seconds / timestep_interval)
 # Define feature groups
 features_per_timestep = ["Vertical velocity", "Vertical acceleration", "Total velocity", "Altitude"]
 feature_groups = {
-    label: sorted([col for col in df_full.columns if col.startswith(label)])
+    label: sorted([col for col in df.columns if col.startswith(label)])
     for label in features_per_timestep
 }
 
 # Split entire flights (rows) into train/test
-train_df, test_df = train_test_split(df_full, test_size=0.2, random_state=42)
+train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
 
 # %%
 # Sliding window function
