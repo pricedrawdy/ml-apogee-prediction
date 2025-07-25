@@ -1,169 +1,79 @@
-===============================
-RocketSerializer Quick Guide
-===============================
-
-To convert an OpenRocket .ork file to JSON using RocketSerializer:
-
--------------
-STEP 1: Open Terminal
--------------
-Open Command Prompt (or PowerShell) and navigate to your RocketPy folder:
-
-    cd C:\Users\price\Documents\RocketPy
-
--------------
-STEP 2: Activate Virtual Environment
--------------
-Activate the Python virtual environment:
-
-    .\venv\Scripts\activate
-
--------------
-STEP 3: Set JAVA_HOME (only needed if not already set globally)
--------------
-If JAVA_HOME is not set permanently on your system, run:
-
-    set JAVA_HOME=C:\Program Files\Java\jdk-17
-    set PATH=%JAVA_HOME%\bin;%PATH%
-
--------------
-STEP 4: Run RocketSerializer
--------------
-Convert your .ork file to JSON using the following command:
-
-    ork2json --filepath Trinity9.4.ork --ork_jar "C:/Program Files/OpenRocket/OpenRocket.jar" --output ./json_output
-
-This will generate a JSON version of your `.ork` file and place it inside the `json_output` folder (which will be created if it doesn't exist).
-
--------------
-NOTES:
--------------
-- Make sure `OpenRocket.jar` exists at the specified path.
-- You can replace `Trinity9.4.ork` with any other `.ork` file in the folder.
-- You must be connected to the internet the first time you run RocketSerializer (for any dependency downloads).
-
-===============================
-
-
-===============================
 # 🚀 Rocket Apogee Prediction
-===============================
 
-This repository contains a machine learning pipeline for predicting rocket apogee using real-time flight telemetry and a custom sliding window generator. The model is built using PyTorch and trained on a dataset of ~120 real flights.
+This project trains a neural network to predict rocket apogee from flight telemetry. Sliding windows of recent data are used as input to a PyTorch model.
 
-## 📁 Project Structure
+## Quick Start
 
-```
+1. Create and activate a virtual environment, then install dependencies:
 
-.
-apogee-prediction/
-├── README.md
-├── requirements.txt
-├── .gitignore
-├── data/
-│   ├── raw/                     # Original CSV with all 120+ flights
-│   ├── processed/               # Train/test CSVs created by sliding window generator
-│   └── scalers/                 # Scaler .pkl files
-├── models/
-│   ├── apogee_mlp_model.pth     # Saved model weights
-│   └── architecture.py          # MLP class (ApogeeMLP)
-├── scripts/
-│   ├── sliding_window_generator.py
-│   ├── train_model.py
-│   ├── evaluate_apogee.py       # Your test script (refactored for multi-flight)
-│   └── helpers.py               # Shared functions (e.g., load_scalers, plot_preds)
-├── notebooks/
-│   └── analysis.ipynb           # For interactive EDA, RMSE vs time, etc.
-└── deploy/
-    ├── onboard_pipeline.py      # Minimal real-time prediction for flight computer
-    └── config.yaml              # Configs (e.g., scaler paths, window size)
-
-
-````
-
----
-
-## 🔧 Setup Instructions
-
-### 1. Clone the Repository
 ```bash
-git clone https://github.com/pricedrawdy/ml-apogee-prediction.git
-cd ml-apogee-prediction
-````
-
-### 2. Create a Virtual Environment
-
-**Windows:**
-
-```cmd
 python -m venv venv
-venv\Scripts\activate
-```
-
-**macOS/Linux:**
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### 3. Install Dependencies
-
-```bash
+source venv/bin/activate    # on Windows use venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
----
+2. Place your raw CSVs in `data/raw/`.
 
-## 🚀 Usage
-
-### Generate Sliding Windows
+3. Generate training windows:
 
 ```bash
-python scripts/sliding_window_generator.py
+python scripts/sliding_window_generator_v2.py
 ```
 
-### Train the Model
+4. Train the model:
 
 ```bash
-python scripts/train_mlp_model.py
+python models/apogee_prediction_model_v1.py
 ```
 
-### Evaluate Predictions (on Test Set)
+5. Evaluate on the test set:
 
 ```bash
-python scripts/evaluate_prediction.py
+python scripts/apogee_prediction_test_v1.1.py
+```
+
+## Project Structure
+
+```
+.
+├── data/
+│   ├── raw/                  # Original flight CSVs
+│   ├── processed/            # Train/test windows
+│   └── scalers/              # Saved scaler files
+├── models/
+│   └── apogee_prediction_model_v1.py  # Training script
+├── scripts/
+│   ├── apogee_prediction_test_v1.1.py # Evaluate predictions
+│   ├── batch_simulation_creation.py   # Create simulation data
+│   └── sliding_window_generator_v2.py # Generate windows
+├── notebooks/               # Example Jupyter notebooks
+└── deploy/                  # Real-time prediction pipeline
+```
+
+## Model Overview
+
+- Input: 2.5 s window of telemetry
+- Architecture: 3-layer MLP
+- Output: Predicted apogee (meters)
+
+---
+
+### RocketSerializer (optional)
+
+If you need JSON versions of OpenRocket `.ork` files, install RocketSerializer and run:
+
+```bash
+ork2json --filepath <file.ork> --ork_jar <path/to/OpenRocket.jar> --output ./json_output
 ```
 
 ---
 
-## 📌 Notes
+## Contributing
 
-* All file paths use Python’s `pathlib` for cross-platform compatibility.
-* Model weights and scalers are saved using `torch.save()` and `joblib`.
-* Data must be in the `data/` directory to work with the provided scripts.
+This repository is used for academic research. Contributions are welcome via pull requests.
 
----
+## Environment
 
-## 🧠 Model Overview
-
-* Input: Flattened sliding windows of time-series flight data (e.g., velocity, altitude, etc.)
-* Output: Predicted apogee (in meters)
-* Architecture: 3-layer MLP (128 → 64 → 1)
-
----
-
-## 🤝 Contributing
-
-This is a private academic research project. Contributions welcome if you’re on the dev team.
-
----
-
-## 🧪 Environment Info
-
-* Python 3.10+
-* PyTorch ≥ 2.0
-* scikit-learn ≥ 1.0
-* pandas, numpy
-
-===============================
+- Python 3.10+
+- PyTorch 2.0+
+- scikit-learn 1.0+
