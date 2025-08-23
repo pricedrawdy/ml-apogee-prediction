@@ -1,6 +1,20 @@
-# 🚀 Rocket Apogee Prediction
+# Rocket Apogee Prediction
 
 This project trains a neural network to predict rocket apogee from flight telemetry. Sliding windows of recent data are used as input to a PyTorch model.
+
+--- 1 --- Create a rocket in OpenRocket
+
+--- 2 --- Use RocketSerializer to convert your OpenRocket into use with RocketPy
+
+install RocketSerializer and run:
+
+```bash
+ork2json --filepath <file.ork> --ork_jar <path/to/OpenRocket.jar> --output ./json_output
+```
+
+
+
+
 
 ## Quick Start
 
@@ -37,17 +51,17 @@ python scripts/apogee_prediction_test_v1.1.py
 ```
 .
 ├── data/
-│   ├── raw/                  # Original flight CSVs
-│   ├── processed/            # Train/test windows
-│   └── scalers/              # Saved scaler files
+│   ├── raw/                              # Original flight CSVs
+│   ├── processed/                        # Train/test windows
+│   └── scalers/                          # Saved scaler files
 ├── models/
-│   └── apogee_prediction_model_v1.py  # Training script
+│   └── apogee_prediction_model_v1.py     # Training script
 ├── scripts/
-│   ├── apogee_prediction_test_v1.1.py # Evaluate predictions
-│   ├── batch_simulation_creation.py   # Create simulation data
-│   └── sliding_window_generator_v2.py # Generate windows
-├── notebooks/               # Example Jupyter notebooks
-└── deploy/                  # Real-time prediction pipeline
+│   ├── apogee_prediction_test_v1.1.py   # Evaluate predictions
+│   ├── batch_simulation_creation.py     # Create simulation data
+│   └── sliding_window_generator_v2.py   # Generate windows
+├── notebooks/                           # Example Jupyter notebooks for testing
+└── deploy/                              # Real-time prediction pipeline
 ```
 
 ## Model Overview
@@ -56,15 +70,6 @@ python scripts/apogee_prediction_test_v1.1.py
 - Architecture: 3-layer MLP
 - Output: Predicted apogee (meters)
 
----
-
-### RocketSerializer (optional)
-
-If you need JSON versions of OpenRocket `.ork` files, install RocketSerializer and run:
-
-```bash
-ork2json --filepath <file.ork> --ork_jar <path/to/OpenRocket.jar> --output ./json_output
-```
 
 ---
 
