@@ -197,18 +197,3 @@ for wind in wind_speeds:
 df = pd.DataFrame(all_rows, columns=colnames)
 df.to_csv("batch_dataset_v1.csv", index=False)
 print("Simulation data saved as batch_dataset_v1.csv")
-
-
-
-
-
-
-
-
-'''
-row = [wind, temp, angle, apogee_alt]
-row += v_vel.tolist()
-row += v_acc.tolist()
-row += t_vel.tolist()
-row += alt_interp.tolist()
-'''

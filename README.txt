@@ -2,45 +2,51 @@
 
 This project trains a neural network to predict rocket apogee from flight telemetry. Sliding windows of recent data are used as input to a PyTorch model.
 
---- 1 --- Create a rocket in OpenRocket
+## 1. Create a rocket in OpenRocket
 
---- 2 --- Use RocketSerializer to convert your OpenRocket into use with RocketPy
+## 2. Create and activate a virtual environment, then install dependencies:
 
-install RocketSerializer and run:
+```bash
+python -m venv venv         # on Mac use python3 -m venv venv
+venv\Scripts\activate       # on Mac use source venv/bin/activate
+pip install -r requirements.txt
+```
+## 3. Use RocketSerializer to convert your OpenRocket into use with RocketPy
+- Note: on Mac getting the 
 
+Find your OpenRocket .ork file and OpenRocket .jar file
+- On Mac the .jar can be found under /Applications/OpenRocket.app/Contents/Resources/app/jar
+- Note: in order to get this to run on mac you will have to mess around with your Java installation. Windows is simpler
+- On windows, find the jar yourself
+- Put your .ork file in rocket-info
+- Swap the file names/paths with your file names/paths
 ```bash
 ork2json --filepath <file.ork> --ork_jar <path/to/OpenRocket.jar> --output ./json_output
 ```
 
+## 4. Place converted files in rocket-info
 
+## 5. Copy rocket data into batch_simulation_creation from parameters.json
 
-
-
-## Quick Start
-
-1. Create and activate a virtual environment, then install dependencies:
+## 6. Generate batch dataset (can take 20+ minutes depending on the parameter variation)
 
 ```bash
-python -m venv venv
-source venv/bin/activate    # on Windows use venv\Scripts\activate
-pip install -r requirements.txt
+python scripts/batch_simulation_creation.py
 ```
 
-2. Place your raw CSVs in `data/raw/`.
-
-3. Generate training windows:
+## 7. Generate training windows:
 
 ```bash
 python scripts/sliding_window_generator_v2.py
 ```
 
-4. Train the model:
+## 8. Train the model:
 
 ```bash
 python models/apogee_prediction_model_v1.py
 ```
 
-5. Evaluate on the test set:
+## 9. Evaluate on the test set:
 
 ```bash
 python scripts/apogee_prediction_test_v1.1.py
