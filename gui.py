@@ -8,9 +8,10 @@ import os
 # Determine repository root
 domain_root = Path(__file__).resolve().parent
 
-# Variables to hold file paths
-ork_path = tk.StringVar()
-jdk_path = tk.StringVar()
+# Global references for GUI elements initialized in main()
+root: tk.Tk | None = None
+ork_path: tk.StringVar | None = None
+jdk_path: tk.StringVar | None = None
 
 
 def browse_ork():
@@ -83,24 +84,45 @@ def run_testing_script():
     run_command(cmd, "Testing Script")
 
 
-# Build GUI
-root = tk.Tk()
-root.title("Apogee Prediction Toolkit")
+def main() -> None:
+    """Create the GUI and start the Tkinter main loop."""
+    global root, ork_path, jdk_path
 
-# File selection widgets
-tk.Label(root, text=".ork File").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-tk.Entry(root, textvariable=ork_path, width=50).grid(row=0, column=1, padx=5, pady=5)
-tk.Button(root, text="Browse", command=browse_ork).grid(row=0, column=2, padx=5, pady=5)
+    root = tk.Tk()
+    root.title("Apogee Prediction Toolkit")
 
-tk.Label(root, text="JDK / OpenRocket JAR").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-tk.Entry(root, textvariable=jdk_path, width=50).grid(row=1, column=1, padx=5, pady=5)
-tk.Button(root, text="Browse", command=browse_jdk).grid(row=1, column=2, padx=5, pady=5)
+    # Initialize variables after creating root window
+    ork_path = tk.StringVar()
+    jdk_path = tk.StringVar()
 
-# Action buttons
-tk.Button(root, text="Run RocketSerializer", command=run_rocketserializer).grid(row=2, column=0, columnspan=3, padx=5, pady=10, sticky="we")
-tk.Button(root, text="Run Batch Simulation Creation", command=run_batch_simulation).grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="we")
-tk.Button(root, text="Run Sliding Window Generator", command=run_sliding_window).grid(row=4, column=0, columnspan=3, padx=5, pady=5, sticky="we")
-tk.Button(root, text="Run ML Model Creation", command=run_model_creation).grid(row=5, column=0, columnspan=3, padx=5, pady=5, sticky="we")
-tk.Button(root, text="Run Testing Script", command=run_testing_script).grid(row=6, column=0, columnspan=3, padx=5, pady=5, sticky="we")
+    # Build GUI widgets
+    tk.Label(root, text=".ork File").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+    tk.Entry(root, textvariable=ork_path, width=50).grid(row=0, column=1, padx=5, pady=5)
+    tk.Button(root, text="Browse", command=browse_ork).grid(row=0, column=2, padx=5, pady=5)
 
-root.mainloop()
+    tk.Label(root, text="JDK / OpenRocket JAR").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+    tk.Entry(root, textvariable=jdk_path, width=50).grid(row=1, column=1, padx=5, pady=5)
+    tk.Button(root, text="Browse", command=browse_jdk).grid(row=1, column=2, padx=5, pady=5)
+
+    # Action buttons
+    tk.Button(root, text="Run RocketSerializer", command=run_rocketserializer).grid(
+        row=2, column=0, columnspan=3, padx=5, pady=10, sticky="we"
+    )
+    tk.Button(root, text="Run Batch Simulation Creation", command=run_batch_simulation).grid(
+        row=3, column=0, columnspan=3, padx=5, pady=5, sticky="we"
+    )
+    tk.Button(root, text="Run Sliding Window Generator", command=run_sliding_window).grid(
+        row=4, column=0, columnspan=3, padx=5, pady=5, sticky="we"
+    )
+    tk.Button(root, text="Run ML Model Creation", command=run_model_creation).grid(
+        row=5, column=0, columnspan=3, padx=5, pady=5, sticky="we"
+    )
+    tk.Button(root, text="Run Testing Script", command=run_testing_script).grid(
+        row=6, column=0, columnspan=3, padx=5, pady=5, sticky="we"
+    )
+
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
