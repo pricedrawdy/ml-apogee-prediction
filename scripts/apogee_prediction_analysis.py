@@ -107,7 +107,7 @@ def assert_flight_blocking(df: pd.DataFrame):
         print(f"Blocks: {problems[:10]}{'...' if len(problems) > 10 else ''}")
     else:
         print("Flight blocking looks consistent (constant Apogee per block).")
-
+# luke is a big dum dum
 # === 2) Multi-flight performance visualization ===
 def analyze_flight_predictions(test_df: pd.DataFrame, y_true: np.ndarray, y_pred: np.ndarray):
     assert_flight_blocking(test_df)
