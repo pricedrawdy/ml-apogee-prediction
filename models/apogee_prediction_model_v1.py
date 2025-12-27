@@ -1,127 +1,207 @@
+"""
+Training utilities for Apogee prediction models.
 
-# ### Apogee Prediction Model V1
-# %%
+This module now supports training three model variants on the same preprocessed
+features/targets:
+- A three-layer MLP (baseline)
+- A RandomForestRegressor
+- A Linear Regression model
+
+Each model is trained on standardized features and targets, and the shared
+scalers are persisted for later inference.
+"""
+from __future__ import annotations
+
 from pathlib import Path
-import pandas as pd
+from typing import Tuple
+
+import joblib
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-import joblib  # for saving scaler
 
-# %%
 # Paths
-csv_path = Path(__file__).resolve().parent.parent / "data" / "processed" / "sliding_train_by_flight.csv"
-scalers_dir = Path(__file__).resolve().parent.parent / "data" / "scalers" 
-scalers_dir.mkdir(parents=True, exist_ok=True)
-model_dir = Path(__file__).resolve().parent
-
-# Load the dataset
-df = pd.read_csv(csv_path)
-
-# Fill NaNs with 0
-df.fillna(0, inplace=True)
-
-# Count initial number of columns
-initial_cols = df.shape[1]
-
-# Drop columns where all values are exactly 0
-df = df.loc[:, (df != 0).any(axis=0)]
-
-# Count and report how many were removed
-removed_cols = initial_cols - df.shape[1]
-print(f"Removed {removed_cols} all-zero columns.")
+CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "processed" / "sliding_train_by_flight.csv"
+SCALERS_DIR = Path(__file__).resolve().parent.parent / "data" / "scalers"
+MODEL_DIR = Path(__file__).resolve().parent
+SCALERS_DIR.mkdir(parents=True, exist_ok=True)
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# %%
-# Split features and target
-X = df.drop(columns=["Apogee"]).values
-y = df["Apogee"].values.reshape(-1, 1)
-
-# Check for NaNs/infs just in case
-assert not np.isnan(X).any(), "NaN found in features"
-assert not np.isnan(y).any(), "NaN found in targets"
-
-# Feature scaling
-input_scaler = StandardScaler()
-X_scaled = input_scaler.fit_transform(X)
-joblib.dump(input_scaler, scalers_dir / "apogee_input_scaler.pkl")
-
-# Target scaling (important!)
-target_scaler = StandardScaler()
-y_scaled = target_scaler.fit_transform(y)
-joblib.dump(target_scaler, scalers_dir / "apogee_target_scaler.pkl")
-
-# Train/val split
-X_train, X_val, y_train, y_val = train_test_split(X_scaled, y_scaled, test_size=0.2, random_state=42)
-
-# Convert to PyTorch tensors
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-X_train = torch.tensor(X_train, dtype=torch.float32).to(device)
-y_train = torch.tensor(y_train, dtype=torch.float32).to(device)
-X_val = torch.tensor(X_val, dtype=torch.float32).to(device)
-y_val = torch.tensor(y_val, dtype=torch.float32).to(device)
-
-# %%
-# === Define MLP model ===
 class ApogeeMLP(nn.Module):
-    def __init__(self, input_dim):
-        super(ApogeeMLP, self).__init__()
+    """Three-layer MLP baseline."""
+
+    def __init__(self, input_dim: int):
+        super().__init__()
         self.model = nn.Sequential(
             nn.Linear(input_dim, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(64, 1),
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
         return self.model(x)
 
-model = ApogeeMLP(X_train.shape[1]).to(device)
 
-# %%
-# Loss and optimizer
-criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+def preprocess_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, StandardScaler, StandardScaler]:
+    """Load, clean, and scale the dataset."""
+    df = pd.read_csv(CSV_PATH)
+    df.fillna(0, inplace=True)
 
-# Training loop
-epochs = 50
-batch_size = 64
+    # Drop columns with all zeros to avoid meaningless features
+    df = df.loc[:, (df != 0).any(axis=0)]
 
-# %%
-for epoch in range(epochs):
-    model.train()
-    permutation = torch.randperm(X_train.size(0))
-    epoch_loss = 0
+    X = df.drop(columns=["Apogee"]).values
+    y = df["Apogee"].values.reshape(-1, 1)
 
-    for i in range(0, X_train.size(0), batch_size):
-        indices = permutation[i:i + batch_size]
-        batch_x = X_train[indices]
-        batch_y = y_train[indices]
+    assert not np.isnan(X).any(), "NaN found in features"
+    assert not np.isnan(y).any(), "NaN found in targets"
 
-        optimizer.zero_grad()
-        outputs = model(batch_x)
-        loss = criterion(outputs, batch_y)
-        loss.backward()
-        optimizer.step()
+    input_scaler = StandardScaler()
+    X_scaled = input_scaler.fit_transform(X)
+    joblib.dump(input_scaler, SCALERS_DIR / "apogee_input_scaler.pkl")
 
-        epoch_loss += loss.item()
+    target_scaler = StandardScaler()
+    y_scaled = target_scaler.fit_transform(y)
+    joblib.dump(target_scaler, SCALERS_DIR / "apogee_target_scaler.pkl")
 
-    # Validation loss
-    model.eval()
-    with torch.no_grad():
-        val_outputs = model(X_val)
-        val_loss = criterion(val_outputs, y_val).item()
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_scaled, y_scaled, test_size=0.2, random_state=42
+    )
 
-    print(f"Epoch {epoch + 1}/{epochs}, Train Loss: {epoch_loss:.4f}, Val Loss: {val_loss:.4f}")
-
-# %%
-# Save the model
-torch.save(model.state_dict(), model_dir / "apogee_mlp_model.pth")
-print("✅ Model and scalers saved (apogee_mlp_model.pth, apogee_input_scaler.pkl, apogee_target_scaler.pkl)")
+    return X_train, X_val, y_train, y_val, input_scaler, target_scaler
 
 
+def train_mlp(
+    X_train: np.ndarray,
+    X_val: np.ndarray,
+    y_train: np.ndarray,
+    y_val: np.ndarray,
+    target_scaler: StandardScaler,
+) -> float:
+    """Train the three-layer MLP and return validation RMSE in meters."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    train_tensor = torch.tensor(X_train, dtype=torch.float32).to(device)
+    train_targets = torch.tensor(y_train, dtype=torch.float32).to(device)
+    val_tensor = torch.tensor(X_val, dtype=torch.float32).to(device)
+    val_targets = torch.tensor(y_val, dtype=torch.float32).to(device)
 
+    model = ApogeeMLP(train_tensor.shape[1]).to(device)
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    epochs = 50
+    batch_size = 64
+
+    for epoch in range(epochs):
+        model.train()
+        permutation = torch.randperm(train_tensor.size(0), device=device)
+        epoch_loss = 0.0
+
+        for i in range(0, train_tensor.size(0), batch_size):
+            indices = permutation[i : i + batch_size]
+            batch_x = train_tensor[indices]
+            batch_y = train_targets[indices]
+
+            optimizer.zero_grad()
+            outputs = model(batch_x)
+            loss = criterion(outputs, batch_y)
+            loss.backward()
+            optimizer.step()
+
+            epoch_loss += loss.item()
+
+        model.eval()
+        with torch.no_grad():
+            val_outputs = model(val_tensor)
+            val_loss = criterion(val_outputs, val_targets).item()
+
+        print(
+            f"Epoch {epoch + 1}/{epochs}, Train Loss: {epoch_loss:.4f}, Val Loss: {val_loss:.4f}"
+        )
+
+    torch.save(model.state_dict(), MODEL_DIR / "apogee_mlp_model.pth")
+    print("✅ Saved MLP model to apogee_mlp_model.pth")
+
+    val_rmse = _inverse_rmse(
+        y_val, val_outputs.detach().cpu().numpy().reshape(-1, 1), target_scaler
+    )
+    return val_rmse
+
+
+def _inverse_rmse(y_true_scaled: np.ndarray, y_pred_scaled: np.ndarray, target_scaler: StandardScaler) -> float:
+    """Compute RMSE in original units using the shared target scaler."""
+    y_true = target_scaler.inverse_transform(y_true_scaled.reshape(-1, 1))
+    y_pred = target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1))
+    return float(np.sqrt(mean_squared_error(y_true, y_pred)))
+
+
+def train_random_forest(
+    X_train: np.ndarray,
+    X_val: np.ndarray,
+    y_train: np.ndarray,
+    y_val: np.ndarray,
+    target_scaler: StandardScaler,
+) -> float:
+    model = RandomForestRegressor(
+        n_estimators=300,
+        random_state=42,
+        n_jobs=-1,
+        max_depth=None,
+        min_samples_split=2,
+    )
+    model.fit(X_train, y_train.ravel())
+
+    val_pred_scaled = model.predict(X_val)
+    val_rmse = _inverse_rmse(y_val, val_pred_scaled, target_scaler)
+
+    joblib.dump(model, MODEL_DIR / "apogee_random_forest.pkl")
+    print("✅ Saved Random Forest model to apogee_random_forest.pkl")
+
+    return val_rmse
+
+
+def train_linear_regression(
+    X_train: np.ndarray,
+    X_val: np.ndarray,
+    y_train: np.ndarray,
+    y_val: np.ndarray,
+    target_scaler: StandardScaler,
+) -> float:
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+
+    val_pred_scaled = model.predict(X_val)
+    val_rmse = _inverse_rmse(y_val, val_pred_scaled, target_scaler)
+
+    joblib.dump(model, MODEL_DIR / "apogee_linear_regression.pkl")
+    print("✅ Saved Linear Regression model to apogee_linear_regression.pkl")
+
+    return val_rmse
+
+
+def main():
+    X_train, X_val, y_train, y_val, _, target_scaler = preprocess_data()
+    print("Starting training for Apogee models...")
+
+    mlp_rmse = train_mlp(X_train, X_val, y_train, y_val, target_scaler)
+    print(f"MLP validation RMSE (meters): {mlp_rmse:.2f}")
+
+    rf_rmse = train_random_forest(X_train, X_val, y_train, y_val, target_scaler)
+    print(f"Random Forest validation RMSE (meters): {rf_rmse:.2f}")
+
+    lr_rmse = train_linear_regression(X_train, X_val, y_train, y_val, target_scaler)
+    print(f"Linear Regression validation RMSE (meters): {lr_rmse:.2f}")
+
+
+if __name__ == "__main__":
+    main()
