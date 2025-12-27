@@ -60,7 +60,7 @@ rmse = np.sqrt(mse)
 print(f"RMSE: {rmse:.2f} meters")
 
 # === Settings ===
-flight_index = 2  # 👈 CHANGE THIS to test a different flight (0-based)
+flight_index = 2  # CHANGE THIS to test a different flight (0-based)
 
 # === Sliding window parameters ===
 timestep_interval = 0.025
@@ -81,36 +81,27 @@ print(f"\n=== Predictions for Flight {flight_index} with True Apogee ~= {target_
 for i in indices:
     print(f"Sample {i}: Pred = {y_pred[i][0]:.2f} m, True = {y_true[i][0]:.2f} m")
 
-# Summary stats for the selected flight
-preds = y_pred[indices].flatten()
-true_val = float(target_apogee)
-errors = preds - true_val
-
-print("\n--- Flight summary ---")
-print(f"windows={len(preds)}  mean_pred={preds.mean():.2f}  median_pred={np.median(preds):.2f}")
-print(f"bias(mean error)={errors.mean():.2f} m  MAE={np.mean(np.abs(errors)):.2f} m  RMSE={np.sqrt(np.mean(errors**2)):.2f} m")
-print(f"min_pred={preds.min():.2f}  max_pred={preds.max():.2f}  std={preds.std(ddof=1):.2f} m")
 
 
 # %%
+# Update the plotting section
 import matplotlib.pyplot as plt
 
-# Load unwindowed dataset with corrected path
-processed_dir = Path(__file__).resolve().parent.parent / "data" / "raw"
-df_full = pd.read_csv(processed_dir / "batch_dataset_v1.csv")
+# Correct file path using Path
+data_dir = Path(__file__).resolve().parent.parent / "data" / "raw"
+df_full = pd.read_csv(data_dir / "batch_dataset_v1.csv")
 
 # Choose the Nth row (flight) from the original unwindowed data
 flight_index = 0  # change this if needed
 
 # Compute sliding window parameters
 timestep_interval = 0.025
-window_size = int(2.5 / timestep_interval)  # 100
-stride = int(0.25 / timestep_interval)      # 10
+window_size = int(2.5 / timestep_interval)
+stride = int(0.25 / timestep_interval)
 
-# Calculate how many windows per flight
-# Total steps per flight = 25s / 0.025s = 1000
-total_steps = int(25 / timestep_interval)
-samples_per_flight = ((total_steps - window_size) // stride) + 1  # Should be 91
+# Calculate samples per flight
+samples_per_flight = ((25 / timestep_interval - window_size) // stride) + 1
+samples_per_flight = int(samples_per_flight)
 
 # Get the window range for that one flight
 start = flight_index * samples_per_flight
@@ -120,31 +111,40 @@ end = start + samples_per_flight
 preds = y_pred[start:end].flatten()
 true_vals = y_true[start:end].flatten()
 
-# Get target apogee from df_full if it has an Apogee column, otherwise use first true value
-if "Apogee" in df_full.columns:
-    target_apogee = df_full.iloc[flight_index]["Apogee"]
-else:
-    target_apogee = true_vals[0]
+# Calculate time points for x-axis
+time = np.array([((i * stride) + window_size // 2) * timestep_interval 
+                 for i in range(len(preds))])
 
-# Time is at the center of each window
-time = np.array([((i * stride) + window_size // 2) * timestep_interval for i in range(len(preds))])
+# Limit the prediction window to first 10 seconds
+max_flight_time = 10.0  # seconds
+time_mask = time <= max_flight_time
 
-# Cap at 10 seconds
-mask = time <= 10.0
-time = time[mask]
-preds = preds[mask]
+# Create the plot
+plt.figure(figsize=(12, 6))
+plt.plot(time[time_mask], preds[time_mask], 'b-o', 
+         label='Predicted Apogee', markersize=4)
+plt.hlines(target_apogee, time[0], max_flight_time, 
+          colors='r', linestyles='--', label='True Apogee')
 
-# Plot
-plt.figure(figsize=(10, 5))
-plt.plot(time, preds, label='Predicted Apogee', marker='o')
-plt.hlines(target_apogee, time[0], time[-1], colors='r', linestyles='--', label='True Apogee')
+# Add error bands (±5% of true apogee)
+error_margin = 0.05 * target_apogee
+plt.fill_between(time[time_mask], 
+                target_apogee - error_margin, 
+                target_apogee + error_margin, 
+                color='r', alpha=0.1)
 
-plt.title(f"Apogee Prediction Over Time - Flight {flight_index} (Sliding Window, ≤10s)")
+plt.title("Apogee Prediction Over Time (Sliding Window)")
 plt.xlabel("Time into Flight (s)")
 plt.ylabel("Apogee Prediction (m)")
+plt.xlim(0, max_flight_time)  # Set x-axis limits from 0 to max_flight_time
 plt.legend()
-plt.grid(True)
+plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
 
-# %%
+# Add error statistics
+error = np.abs(preds - target_apogee)
+print(f"\nError Statistics for Flight {flight_index}:")
+print(f"Mean Absolute Error: {np.mean(error):.2f} m")
+print(f"Max Error: {np.max(error):.2f} m")
+print(f"Min Error: {np.min(error):.2f} m")
