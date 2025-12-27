@@ -1,19 +1,25 @@
-# %%
 from pathlib import Path
 import torch
 import joblib
 import pandas as pd
 import numpy as np
 from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
 
-# %%
-# === Load trained model and scalers ===
-scalers_dir = Path(__file__).resolve().parent.parent / "data" / "scalers" 
-model_dir = Path(__file__).resolve().parent.parent / "models"
+# === Configuration ===
+FLIGHT_INDEX = 2            # Flight to analyze/plot (0-based)
+TIMESTEP = 0.025            # Seconds
+WINDOW_DURATION = 2.5       # Seconds
+STRIDE_DURATION = 0.25      # Seconds
+TOTAL_FLIGHT_TIME = 25.0    # Seconds (Total duration per flight in dataset)
+PLOT_MAX_TIME = 10.0        # Seconds (Limit x-axis for visibility)
 
-input_scaler = joblib.load(scalers_dir / "apogee_input_scaler.pkl")
-target_scaler = joblib.load(scalers_dir / "apogee_target_scaler.pkl")
+# Calculated parameters
+WINDOW_SIZE = int(WINDOW_DURATION / TIMESTEP)
+STRIDE = int(STRIDE_DURATION / TIMESTEP)
+SAMPLES_PER_FLIGHT = int(((TOTAL_FLIGHT_TIME / TIMESTEP - WINDOW_SIZE) // STRIDE) + 1)
 
+# === Model Definition ===
 class ApogeeMLP(torch.nn.Module):
     def __init__(self, input_dim):
         super(ApogeeMLP, self).__init__()
@@ -28,123 +34,86 @@ class ApogeeMLP(torch.nn.Module):
     def forward(self, x):
         return self.model(x)
 
-# Load model weights
-model = ApogeeMLP(input_dim=400)  # adjust if your input shape differs
-model.load_state_dict(torch.load(model_dir / "apogee_mlp_model.pth"))
-model.eval()
+# === Setup Paths ===
+base_dir = Path(__file__).resolve().parent.parent
+scalers_dir = base_dir / "data" / "scalers"
+model_dir = base_dir / "models"
+data_dir = base_dir / "data" / "processed"
 
-# %%
-# === Load the dataset ===
-input_csv = "sliding_test_by_flight.csv"  # The test dataset file
-input_csv_dir = Path(__file__).resolve().parent.parent / "data" / "processed"
-df = pd.read_csv(input_csv_dir / input_csv)
+# === Load Resources ===
+print("Loading model and scalers...")
+input_scaler = joblib.load(scalers_dir / "apogee_input_scaler.pkl")
+target_scaler = joblib.load(scalers_dir / "apogee_target_scaler.pkl")
 
+# Load Data
+df = pd.read_csv(data_dir / "sliding_test_by_flight.csv")
 X = df.drop(columns=["Apogee"]).values
 y_true = df["Apogee"].values.reshape(-1, 1)
 
-# Scale inputs
+# Load Model
+model = ApogeeMLP(input_dim=X.shape[1])
+model.load_state_dict(torch.load(model_dir / "apogee_mlp_model.pth"))
+model.eval()
+
+# === Inference ===
+print("Running inference...")
 X_scaled = input_scaler.transform(X)
 
-# %%
-# Predict with the model
 with torch.no_grad():
     X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
     y_pred_scaled = model(X_tensor).numpy()
 
-# Unscale predicted apogees
 y_pred = target_scaler.inverse_transform(y_pred_scaled)
 
-# === Evaluation ===
+# === Global Evaluation ===
 mse = mean_squared_error(y_true, y_pred)
 rmse = np.sqrt(mse)
-print(f"RMSE: {rmse:.2f} meters")
+print(f"Global RMSE: {rmse:.2f} meters")
 
-# === Settings ===
-flight_index = 2  # CHANGE THIS to test a different flight (0-based)
+# === Single Flight Analysis ===
+# Calculate indices for the specific flight
+start_idx = FLIGHT_INDEX * SAMPLES_PER_FLIGHT
+end_idx = start_idx + SAMPLES_PER_FLIGHT
 
-# === Sliding window parameters ===
-timestep_interval = 0.025
-window_size = int(2.5 / timestep_interval)  # e.g., 100 steps
-stride = int(0.25 / timestep_interval)      # e.g., 10 steps
+if start_idx >= len(y_pred):
+    raise ValueError(f"Flight index {FLIGHT_INDEX} out of bounds.")
 
-# === Group samples by unique apogee ===
-unique_apogees = np.unique(y_true)
+# Slice data
+flight_preds = y_pred[start_idx:end_idx].flatten()
+flight_true = y_true[start_idx:end_idx].flatten()
+target_apogee = flight_true[0] # Assuming constant apogee per flight
 
-# Choose which flight to display
-flight_index = 2  # Change this to view another flight
-target_apogee = unique_apogees[flight_index]
+# Generate time axis
+time_axis = np.array([((i * STRIDE) + WINDOW_SIZE // 2) * TIMESTEP 
+                      for i in range(len(flight_preds))])
 
-# Find all rows for that apogee
-indices = np.where(np.isclose(y_true, target_apogee, atol=0.01))[0]
+# Calculate Error Stats
+error = np.abs(flight_preds - target_apogee)
+print(f"\n=== Analysis for Flight {FLIGHT_INDEX} ===")
+print(f"True Apogee: {target_apogee:.2f} m")
+print(f"Mean Absolute Error: {np.mean(error):.2f} m")
+print(f"Max Error: {np.max(error):.2f} m")
 
-print(f"\n=== Predictions for Flight {flight_index} with True Apogee ~= {target_apogee:.2f} m ===")
-for i in indices:
-    print(f"Sample {i}: Pred = {y_pred[i][0]:.2f} m, True = {y_true[i][0]:.2f} m")
+# === Plotting ===
+# Filter for max plot time
+mask = time_axis <= PLOT_MAX_TIME
 
-
-
-# %%
-# Update the plotting section
-import matplotlib.pyplot as plt
-
-# Correct file path using Path
-data_dir = Path(__file__).resolve().parent.parent / "data" / "raw"
-df_full = pd.read_csv(data_dir / "batch_dataset_v1.csv")
-
-# Choose the Nth row (flight) from the original unwindowed data
-flight_index = 0  # change this if needed
-
-# Compute sliding window parameters
-timestep_interval = 0.025
-window_size = int(2.5 / timestep_interval)
-stride = int(0.25 / timestep_interval)
-
-# Calculate samples per flight
-samples_per_flight = ((25 / timestep_interval - window_size) // stride) + 1
-samples_per_flight = int(samples_per_flight)
-
-# Get the window range for that one flight
-start = flight_index * samples_per_flight
-end = start + samples_per_flight
-
-# Slice predictions and true values
-preds = y_pred[start:end].flatten()
-true_vals = y_true[start:end].flatten()
-
-# Calculate time points for x-axis
-time = np.array([((i * stride) + window_size // 2) * timestep_interval 
-                 for i in range(len(preds))])
-
-# Limit the prediction window to first 10 seconds
-max_flight_time = 10.0  # seconds
-time_mask = time <= max_flight_time
-
-# Create the plot
 plt.figure(figsize=(12, 6))
-plt.plot(time[time_mask], preds[time_mask], 'b-o', 
-         label='Predicted Apogee', markersize=4)
-plt.hlines(target_apogee, time[0], max_flight_time, 
-          colors='r', linestyles='--', label='True Apogee')
+plt.plot(time_axis[mask], flight_preds[mask], 'b-o', label='Predicted Apogee', markersize=4)
+plt.hlines(target_apogee, time_axis[0], PLOT_MAX_TIME, colors='r', linestyles='--', label='True Apogee')
 
-# Add error bands (±5% of true apogee)
-error_margin = 0.05 * target_apogee
-plt.fill_between(time[time_mask], 
-                target_apogee - error_margin, 
-                target_apogee + error_margin, 
-                color='r', alpha=0.1)
+# Error bands (±1%)
+error_margin = 0.01 * target_apogee
+plt.fill_between(time_axis[mask], 
+                 target_apogee - error_margin, 
+                 target_apogee + error_margin, 
+                 color='r', alpha=0.1, label='±1% Margin')
 
-plt.title("Apogee Prediction Over Time (Sliding Window)")
+plt.title(f"Apogee Prediction: Flight {FLIGHT_INDEX}")
 plt.xlabel("Time into Flight (s)")
-plt.ylabel("Apogee Prediction (m)")
-plt.xlim(0, max_flight_time)  # Set x-axis limits from 0 to max_flight_time
-plt.legend()
+plt.ylabel("Apogee (m)")
+plt.xlim(0, PLOT_MAX_TIME)
+plt.legend(loc='lower right')
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
-
-# Add error statistics
-error = np.abs(preds - target_apogee)
-print(f"\nError Statistics for Flight {flight_index}:")
-print(f"Mean Absolute Error: {np.mean(error):.2f} m")
-print(f"Max Error: {np.max(error):.2f} m")
-print(f"Min Error: {np.min(error):.2f} m")
