@@ -21,8 +21,16 @@ ork2json --filepath <file.ork> --ork_jar <path/to/OpenRocket.jar> --output ./jso
 1. Create and activate a virtual environment, then install dependencies:
 
 ```bash
+# macOS / Linux
 python -m venv venv
-source venv/bin/activate    # on Windows use venv\Scripts\activate
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+```bash
+# Windows (PowerShell)
+python -m venv venv
+venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
