@@ -40,11 +40,21 @@ python scripts/sliding_window_generator_v2.py
 python models/apogee_prediction_model_v1.py
 ```
 
-5. Evaluate on the test set:
+5. Evaluate on the test set (supports MLP, Random Forest, and Linear Regression):
 
 ```bash
-python scripts/apogee_prediction_test_v1.1.py
+python scripts/apogee_prediction_test_v1.1.py --model mlp
+# options: --model random_forest | linear_regression
+# show full flight window: --plot-max-time 0
 ```
+
+6. Launch the cross-platform GUI (plots render inside the window):
+
+```bash
+python gui.py
+```
+
+Use the “Run Apogee Tests (MLP / RF / Regression)” button to generate and view all three model plots side by side, with status/logging below.
 
 ## Project Structure
 
@@ -60,6 +70,7 @@ python scripts/apogee_prediction_test_v1.1.py
 │   ├── apogee_prediction_test_v1.1.py   # Evaluate predictions
 │   ├── batch_simulation_creation.py     # Create simulation data
 │   └── sliding_window_generator_v2.py   # Generate windows
+├── gui.py                               # Tkinter GUI with embedded plots for all models
 ├── notebooks/                           # Example Jupyter notebooks for testing
 └── deploy/                              # Real-time prediction pipeline
 ```
