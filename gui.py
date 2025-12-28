@@ -32,7 +32,6 @@ MODEL_DISPLAY = [
     ("mlp", "MLP"),
 ]
 
-
 def browse_ork():
     """Select the OpenRocket .ork file."""
     path = filedialog.askopenfilename(
