@@ -40,6 +40,14 @@ feature_groups = {
     for label in features_per_timestep
 }
 
+# Keep static flight descriptors alongside each window (e.g., wind, temperature, launch angle)
+static_columns = [
+    col
+    for col in df.columns
+    if not any(col.startswith(prefix) for prefix in features_per_timestep)
+    and col not in ["Apogee altitude (m)", "Apogee time (s)"]
+]
+
 # Split entire flights (rows) into train/test
 train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
 
@@ -49,6 +57,7 @@ def generate_windows(df):
     samples = []
     targets = []
     for _, row in df.iterrows():
+        static_vals = row[static_columns].to_numpy()
         # Create a 2D array: shape (num_features, num_timesteps)
         series = np.vstack([
             row[feature_groups["Vertical velocity"]],
@@ -62,7 +71,8 @@ def generate_windows(df):
         for start in range(0, max_start + 1, stride):
             window = series[:, start:start + window_size]
             if window.shape[1] == window_size:
-                samples.append(window.flatten())
+                window_features = np.concatenate([static_vals, window.flatten()])
+                samples.append(window_features)
                 targets.append(apogee)
 
     return pd.DataFrame(samples), pd.Series(targets)
@@ -90,4 +100,4 @@ test_model_path = model_dir / "sliding_test_by_flight.csv"
 train_set.to_csv(train_model_path, index=False)
 test_set.to_csv(test_model_path, index=False)
 
-
+print("Sliding window datasets saved:", train_model_path, test_model_path)
