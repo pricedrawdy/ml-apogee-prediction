@@ -17,6 +17,7 @@ DEFAULT_WINDOW_DURATION = 2.5       # Seconds
 DEFAULT_STRIDE_DURATION = 0.25      # Seconds
 DEFAULT_TOTAL_FLIGHT_TIME = 25.0    # Seconds (Total duration per flight in dataset)
 DEFAULT_PLOT_MAX_TIME = 10.0        # Seconds (Limit x-axis for visibility)
+ERROR_MARGIN_FRACTION = 0.005       # +/- 0.5% band around true apogee
 
 MODEL_FILENAMES = {
     "mlp": "apogee_mlp_model.pth",
@@ -189,14 +190,14 @@ def evaluate_model(
     ax.plot(masked_time, masked_preds, "b-o", label="Predicted Apogee", markersize=4)
     ax.hlines(target_apogee, masked_time[0], masked_time[-1], colors="r", linestyles="--", label="True Apogee")
 
-    error_margin = 0.01 * target_apogee
+    error_margin = ERROR_MARGIN_FRACTION * target_apogee
     ax.fill_between(
         masked_time,
         target_apogee - error_margin,
         target_apogee + error_margin,
         color="r",
         alpha=0.1,
-        label="±1% Margin",
+        label=f"±{ERROR_MARGIN_FRACTION * 100:.1f}% Margin",
     )
 
     ax.set_title(f"Apogee Prediction: Flight {flight_index} ({model_type})")
@@ -205,6 +206,9 @@ def evaluate_model(
     ax.set_xlim(min(masked_time), max(masked_time))
     ax.legend(loc="lower right")
     ax.grid(True, alpha=0.3)
+    plot_min = float(min(np.min(masked_preds), target_apogee - error_margin))
+    plot_max = float(max(np.max(masked_preds), target_apogee + error_margin))
+    ax.set_ylim(plot_min, plot_max)
     fig.tight_layout()
 
     if show_plot:
@@ -218,6 +222,8 @@ def evaluate_model(
         "target_apogee": target_apogee,
         "flight_index": flight_index,
         "model_type": model_type,
+        "plot_min": plot_min,
+        "plot_max": plot_max,
     }
 
 

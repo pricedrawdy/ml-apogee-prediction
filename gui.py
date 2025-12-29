@@ -196,6 +196,8 @@ def run_testing_script():
                     show_plot=False,
                 )
                 results[model_key] = res
+            shared_min = min(r["plot_min"] for r in results.values())
+            shared_max = max(r["plot_max"] for r in results.values())
         except Exception as exc:
             root.after(0, lambda: messagebox.showerror("Error", f"Prediction run failed: {exc}"))
             root.after(0, lambda: status_var.set("Run failed."))
@@ -206,6 +208,9 @@ def run_testing_script():
 
         def update_ui():
             for model_key, result in results.items():
+                ax = result["figure"].axes[0] if result["figure"].axes else None
+                if ax:
+                    ax.set_ylim(shared_min, shared_max)
                 _render_figure(model_key, result["figure"])
                 model_label = result["model_type"].replace("_", " ").title()
                 append_log(
