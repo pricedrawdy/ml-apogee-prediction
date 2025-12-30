@@ -12,9 +12,10 @@ install RocketSerializer and run:
 ork2json --filepath <file.ork> --ork_jar <path/to/OpenRocket.jar> --output ./json_output
 ```
 
+## Workflow Diagram
 
-
-
+![Workflow block diagram](block-diagrams/block_diagram.png)
+[Edit the diagram](block-diagrams/Workflow.drawio)
 
 ## Quick Start
 
