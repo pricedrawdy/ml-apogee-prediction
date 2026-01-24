@@ -21,7 +21,10 @@ rocket_params = params["rocket"]
 rail_button_params = params["rail_buttons"]
 env_params = params["environment"]
 
-thrust_source_path = data_dir / Path(motor_params["thrust_source"]).name
+# Handle cross-platform path parsing (parameters.json may contain Windows-style paths)
+from pathlib import PureWindowsPath
+thrust_source_name = PureWindowsPath(motor_params["thrust_source"]).name
+thrust_source_path = data_dir / thrust_source_name
 motor = SolidMotor(
     thrust_source=str(thrust_source_path),
     dry_mass=motor_params["dry_mass"],
@@ -106,25 +109,43 @@ colnames += [f"Altitude (m) @ {t:.2f}s" for t in timesteps]
 
 all_rows = []
 
-env = Environment()
-env.set_location(latitude=env_params["latitude"], longitude=env_params["longitude"])
-env.set_elevation(env_params["elevation"])
+# Base environment setup (location and date)
+base_env = Environment()
+base_env.set_location(latitude=env_params["latitude"], longitude=env_params["longitude"])
+base_env.set_elevation(env_params["elevation"])
 tomorrow = datetime.date.today() + datetime.timedelta(days=1)
-env.set_date((tomorrow.year, tomorrow.month, tomorrow.day, 12))
+base_env.set_date((tomorrow.year, tomorrow.month, tomorrow.day, 12))
+
+# Maximum altitude for wind profile (meters above ground)
+MAX_ALT = 5000
 
 for wind in wind_speeds:
-    env.wind_speed = wind
-
     for temp in temps:
-        env.temperature = temp
+        # Create fresh environment for each wind/temperature combination
+        # RocketPy requires set_atmospheric_model() to properly configure atmosphere
+        env = Environment()
+        env.set_location(latitude=env_params["latitude"], longitude=env_params["longitude"])
+        env.set_elevation(env_params["elevation"])
+        env.set_date((tomorrow.year, tomorrow.month, tomorrow.day, 12))
+        
+        # Set custom atmospheric model with wind and temperature
+        # wind_u is the east-west component (positive = from west, i.e., headwind for heading=0)
+        # wind_v is the north-south component
+        env.set_atmospheric_model(
+            type="custom_atmosphere",
+            pressure=None,  # Use International Standard Atmosphere pressure profile
+            temperature=float(temp),  # Constant temperature in Kelvin
+            wind_u=[(0, float(wind)), (MAX_ALT, float(wind))],  # Constant headwind profile
+            wind_v=[(0, 0), (MAX_ALT, 0)],  # No crosswind
+        )
 
         for angle in launch_angles:
             rocket = Rocket(
                 radius=rocket_params["radius"],
                 mass=rocket_params["mass"],
                 inertia=rocket_params["inertia"],
-                power_off_drag=str(data_dir / Path(rocket_params["drag_curve"]).name),
-                power_on_drag=str(data_dir / Path(rocket_params["drag_curve"]).name),
+                power_off_drag=str(data_dir / PureWindowsPath(rocket_params["drag_curve"]).name),
+                power_on_drag=str(data_dir / PureWindowsPath(rocket_params["drag_curve"]).name),
                 center_of_mass_without_motor=rocket_params["center_of_mass_without_propellant"],
                 coordinate_system_orientation=rocket_params["coordinate_system_orientation"],
             )

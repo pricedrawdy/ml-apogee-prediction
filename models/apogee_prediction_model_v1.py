@@ -57,9 +57,9 @@ def preprocess_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, S
     df = pd.read_csv(CSV_PATH)
     df.fillna(0, inplace=True)
 
-    # Drop columns with all zeros to avoid meaningless features
-    df = df.loc[:, (df != 0).any(axis=0)]
-
+    # Note: We don't drop all-zero columns here since the sliding window generator
+    # handles this consistently for both train and test sets
+    
     X = df.drop(columns=["Apogee"]).values
     y = df["Apogee"].values.reshape(-1, 1)
 
@@ -156,8 +156,9 @@ def train_random_forest(
         n_estimators=300,
         random_state=42,
         n_jobs=-1,
-        max_depth=None,
-        min_samples_split=2,
+        max_depth=15,           # Limit depth to prevent overfitting
+        min_samples_split=5,    # Require more samples to split
+        min_samples_leaf=3,     # Require more samples in leaves
     )
     model.fit(X_train, y_train.ravel())
 

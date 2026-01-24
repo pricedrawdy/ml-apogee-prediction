@@ -11,13 +11,17 @@ import torch
 from sklearn.metrics import mean_squared_error
 
 # === Default configuration ===
-DEFAULT_FLIGHT_INDEX = 2            # Flight to analyze/plot (0-based)
+DEFAULT_FLIGHT_INDEX = 0            # Flight to analyze/plot (0-based)
 DEFAULT_TIMESTEP = 0.025            # Seconds
 DEFAULT_WINDOW_DURATION = 2.5       # Seconds
 DEFAULT_STRIDE_DURATION = 0.25      # Seconds
 DEFAULT_TOTAL_FLIGHT_TIME = 25.0    # Seconds (Total duration per flight in dataset)
 DEFAULT_PLOT_MAX_TIME = 10.0        # Seconds (Limit x-axis for visibility)
 ERROR_MARGIN_FRACTION = 0.005       # +/- 0.5% band around true apogee
+
+# Burnout phase parameters (must match sliding_window_generator_v2.py)
+BURNOUT_WINDOW_START = 5.0          # Earliest window END time
+BURNOUT_WINDOW_END = 8.0            # Latest window END time
 
 MODEL_FILENAMES = {
     "mlp": "apogee_mlp_model.pth",
@@ -103,8 +107,18 @@ def _build_context(
 
     window_size = int(window_duration / timestep)
     stride = int(stride_duration / timestep)
-    samples_per_flight = int(((total_flight_time / timestep - window_size) // stride) + 1)
-    time_axis = np.array([((i * stride) + window_size // 2) * timestep for i in range(samples_per_flight)])
+    
+    # Calculate samples per flight based on burnout phase windows
+    # Windows are generated with END times between BURNOUT_WINDOW_START and BURNOUT_WINDOW_END
+    min_start_idx = int(BURNOUT_WINDOW_START / timestep) - window_size
+    max_start_idx = int(BURNOUT_WINDOW_END / timestep) - window_size
+    samples_per_flight = len(range(max(0, min_start_idx), max_start_idx + 1, stride))
+    
+    # Time axis shows window END times (when prediction is made)
+    time_axis = np.array([
+        (max(0, min_start_idx) + i * stride + window_size) * timestep 
+        for i in range(samples_per_flight)
+    ])
 
     input_scaler = joblib.load(scalers_dir / "apogee_input_scaler.pkl")
     target_scaler = joblib.load(scalers_dir / "apogee_target_scaler.pkl")
