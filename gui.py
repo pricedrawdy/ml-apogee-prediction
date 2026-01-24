@@ -15,8 +15,7 @@ domain_root = Path(__file__).resolve().parent
 root: tk.Tk | None = None
 ork_path: tk.StringVar | None = None
 jdk_path: tk.StringVar | None = None
-flight_index_var: tk.StringVar | None = None
-plot_time_var: tk.StringVar | None = None
+use_feet_var: tk.BooleanVar | None = None
 status_var: tk.StringVar | None = None
 log_text: tk.Text | None = None
 run_tests_button: tk.Button | None = None
@@ -157,20 +156,10 @@ def run_testing_script():
     if not status_var:
         return
 
-    try:
-        flight_idx = int(flight_index_var.get() or 0)
-    except ValueError:
-        messagebox.showerror("Invalid Input", "Flight index must be an integer.")
-        return
+    use_feet = use_feet_var.get() if use_feet_var else False
 
-    try:
-        max_plot_time = float(plot_time_var.get() or 10.0)
-    except ValueError:
-        messagebox.showerror("Invalid Input", "Plot max time must be a number.")
-        return
-
-    status_var.set("Running predictions...")
-    append_log(f"Starting evaluations for flight {flight_idx}...")
+    status_var.set("Running predictions (averaging all flights)...")
+    append_log("Starting average evaluations across all flights...")
     if run_tests_button:
         run_tests_button.config(state="disabled")
 
@@ -188,12 +177,12 @@ def run_testing_script():
             for model_key, _ in MODEL_DISPLAY:
                 if model_key not in module.MODEL_FILENAMES:
                     continue
-                res = module.evaluate_model(
+                res = module.evaluate_model_average(
                     model_key,
-                    flight_index=flight_idx,
-                    plot_max_time=max_plot_time,
+                    plot_max_time=0,  # Show full flight window by default
                     context=ctx,
                     show_plot=False,
+                    use_feet=use_feet,
                 )
                 results[model_key] = res
             shared_min = min(r["plot_min"] for r in results.values())
@@ -213,9 +202,11 @@ def run_testing_script():
                     ax.set_ylim(shared_min, shared_max)
                 _render_figure(model_key, result["figure"])
                 model_label = result["model_type"].replace("_", " ").title()
+                num_flights = result.get("num_flights", "N/A")
+                unit = "ft" if use_feet else "m"
                 append_log(
-                    f"{model_label}: RMSE {result['rmse']:.2f} m | "
-                    f"MAE {result['mean_abs_error']:.2f} m | Max {result['max_error']:.2f} m"
+                    f"{model_label} (Avg {num_flights} flights): RMSE {result['rmse']:.2f} {unit} | "
+                    f"MAE {result['mean_abs_error']:.2f} {unit} | Max {result['max_error']:.2f} {unit}"
                 )
             status_var.set("Finished. Plots updated.")
             if run_tests_button:
@@ -224,6 +215,7 @@ def run_testing_script():
         root.after(0, update_ui)
 
     threading.Thread(target=task, daemon=True).start()
+
 
 
 def _build_plot_grid(parent: tk.Widget):
@@ -244,7 +236,7 @@ def _build_plot_grid(parent: tk.Widget):
 
 def main() -> None:
     """Create the GUI and start the Tkinter main loop."""
-    global root, ork_path, jdk_path, flight_index_var, plot_time_var, status_var, log_text, run_tests_button
+    global root, ork_path, jdk_path, use_feet_var, status_var, log_text, run_tests_button
 
     root = tk.Tk()
     root.title("Apogee Prediction Toolkit")
@@ -257,14 +249,7 @@ def main() -> None:
     jdk_path = tk.StringVar()
     status_var = tk.StringVar(value="Ready")
 
-    # Attempt to load defaults from the test module
-    try:
-        module = _load_test_module()
-        flight_index_var = tk.StringVar(value=str(module.DEFAULT_FLIGHT_INDEX))
-        plot_time_var = tk.StringVar(value=str(module.DEFAULT_PLOT_MAX_TIME))
-    except Exception:
-        flight_index_var = tk.StringVar(value="0")
-        plot_time_var = tk.StringVar(value="10.0")
+    use_feet_var = tk.BooleanVar(value=False)
 
     # Build GUI widgets
     tk.Label(root, text=".ork File").grid(row=0, column=0, padx=5, pady=5, sticky="e")
@@ -289,15 +274,18 @@ def main() -> None:
         row=3, column=0, padx=5, pady=5, sticky="we"
     )
 
-    # Prediction controls
-    tk.Label(root, text="Flight Index").grid(row=3, column=1, padx=5, pady=5, sticky="e")
-    tk.Entry(root, textvariable=flight_index_var, width=8).grid(row=3, column=2, padx=5, pady=5, sticky="w")
+    # Prediction controls - Unit toggle (Max Time removed as requested)
+    tk.Checkbutton(root, text="Show in Feet", variable=use_feet_var).grid(
+        row=3, column=1, padx=5, pady=5, sticky="w"
+    )
 
-    tk.Label(root, text="Plot Max Time (s)").grid(row=4, column=1, padx=5, pady=5, sticky="e")
-    tk.Entry(root, textvariable=plot_time_var, width=8).grid(row=4, column=2, padx=5, pady=5, sticky="w")
-
-    run_tests_button = tk.Button(root, text="Run Apogee Tests (MLP / RF / Regression)", command=run_testing_script)
-    run_tests_button.grid(row=4, column=0, padx=5, pady=5, sticky="we")
+    # Main action button with dark blue accent
+    run_tests_button = tk.Button(
+        root, 
+        text="Run Apogee Tests (Averaged)", 
+        command=run_testing_script
+    )
+    run_tests_button.grid(row=4, column=0, columnspan=3, padx=5, pady=10, sticky="we")
 
     _build_plot_grid(root)
 

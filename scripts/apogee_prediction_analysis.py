@@ -38,8 +38,13 @@ def load_apogee_mlp_class(models_path: Path):
 
 ApogeeMLP = load_apogee_mlp_class(model_dir)
 
+# === Get input dimension from test data ===
+test_df_temp = pd.read_csv(data_dir / "sliding_test_by_flight.csv")
+input_dim = test_df_temp.shape[1] - 1  # Subtract 1 for target column
+del test_df_temp
+
 # === Load weights ===
-model = ApogeeMLP(input_dim=400)  # adjust if your input shape differs
+model = ApogeeMLP(input_dim=input_dim)
 state = torch.load(model_dir / "apogee_mlp_model.pth", map_location="cpu")
 model.load_state_dict(state)
 model.eval()

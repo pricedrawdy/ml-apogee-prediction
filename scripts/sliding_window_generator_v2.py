@@ -9,7 +9,8 @@ This version prevents data leakage by:
 
 Features per window:
 - Static: wind speed, temperature, launch angle
-- Time-series: vertical velocity, vertical acceleration, total velocity
+- Time-series: vertical velocity, vertical acceleration, total velocity,
+              horizontal velocity, pitch angle, dynamic pressure, Mach number, pressure
 - Derived: relative altitude (delta within window), velocity squared (energy proxy)
 """
 from pathlib import Path
@@ -59,7 +60,11 @@ max_start_idx = int(BURNOUT_WINDOW_END / timestep_interval) - window_size
 print(f"Burnout phase: window start indices {min_start_idx} to {max_start_idx}")
 
 # Define feature groups - NOTE: We still load Altitude but use it differently
-raw_features = ["Vertical velocity", "Vertical acceleration", "Total velocity"]
+raw_features = [
+    "Vertical velocity", "Vertical acceleration", "Total velocity",
+    "Horizontal velocity", "Pitch angle", "Dynamic pressure", 
+    "Mach number", "Pressure"
+]
 altitude_label = "Altitude"
 
 feature_groups = {
@@ -88,6 +93,11 @@ def generate_burnout_windows(df):
     - Vertical velocity time series
     - Vertical acceleration time series  
     - Total velocity time series
+    - Horizontal velocity time series
+    - Pitch angle time series
+    - Dynamic pressure time series
+    - Mach number time series
+    - Pressure time series
     - Relative altitude (altitude change within window) - NOT raw altitude
     - Velocity squared (kinetic energy proxy)
     """
@@ -102,6 +112,11 @@ def generate_burnout_windows(df):
         v_acc = np.array(row[feature_groups["Vertical acceleration"]])
         t_vel = np.array(row[feature_groups["Total velocity"]])
         altitude = np.array(row[feature_groups["Altitude"]])
+        h_vel = np.array(row[feature_groups["Horizontal velocity"]])
+        pitch = np.array(row[feature_groups["Pitch angle"]])
+        dynp = np.array(row[feature_groups["Dynamic pressure"]])
+        mach = np.array(row[feature_groups["Mach number"]])
+        pressure = np.array(row[feature_groups["Pressure"]])
         
         apogee = row["Apogee altitude (m)"]
         max_possible_start = len(v_vel) - window_size
@@ -115,6 +130,11 @@ def generate_burnout_windows(df):
             window_v_acc = v_acc[start:end]
             window_t_vel = t_vel[start:end]
             window_alt = altitude[start:end]
+            window_h_vel = h_vel[start:end]
+            window_pitch = pitch[start:end]
+            window_dynp = dynp[start:end]
+            window_mach = mach[start:end]
+            window_pressure = pressure[start:end]
             
             # Skip if window contains NaN/zero padding (past apogee)
             if np.any(window_v_vel == 0) and np.any(window_alt == 0):
@@ -133,6 +153,11 @@ def generate_burnout_windows(df):
                 window_v_vel,        # Vertical velocity (from accelerometer + integration)
                 window_v_acc,        # Vertical acceleration (from accelerometer)
                 window_t_vel,        # Total velocity (from accelerometer)
+                window_h_vel,        # Horizontal velocity (from GPS/IMU)
+                window_pitch,        # Pitch angle (from IMU)
+                window_dynp,         # Dynamic pressure (from pitot/derived)
+                window_mach,         # Mach number (derived from velocity/temp)
+                window_pressure,     # Atmospheric pressure (from barometer)
                 relative_alt,        # Relative altitude change (from barometer)
                 vel_squared,         # Velocity squared (derived)
             ])

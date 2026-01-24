@@ -16,7 +16,7 @@ DEFAULT_TIMESTEP = 0.025            # Seconds
 DEFAULT_WINDOW_DURATION = 2.5       # Seconds
 DEFAULT_STRIDE_DURATION = 0.25      # Seconds
 DEFAULT_TOTAL_FLIGHT_TIME = 25.0    # Seconds (Total duration per flight in dataset)
-DEFAULT_PLOT_MAX_TIME = 10.0        # Seconds (Limit x-axis for visibility)
+DEFAULT_PLOT_MAX_TIME = 0.0        # Seconds (0.0 to show full flight by default)
 ERROR_MARGIN_FRACTION = 0.005       # +/- 0.5% band around true apogee
 
 # Burnout phase parameters (must match sliding_window_generator_v2.py)
@@ -201,7 +201,7 @@ def evaluate_model(
     else:
         fig = Figure(figsize=(7.5, 4.2))
         ax = fig.add_subplot(111)
-    ax.plot(masked_time, masked_preds, "b-o", label="Predicted Apogee", markersize=4)
+    ax.plot(masked_time, masked_preds, color="#1e3a5f", marker="o", linestyle="-", label="Predicted Apogee", markersize=4)
     ax.hlines(target_apogee, masked_time[0], masked_time[-1], colors="r", linestyles="--", label="True Apogee")
 
     error_margin = ERROR_MARGIN_FRACTION * target_apogee
@@ -240,6 +240,136 @@ def evaluate_model(
         "plot_max": plot_max,
     }
 
+
+def evaluate_model_average(
+    model_type: str,
+    plot_max_time: Optional[float] = DEFAULT_PLOT_MAX_TIME,
+    timestep: float = DEFAULT_TIMESTEP,
+    window_duration: float = DEFAULT_WINDOW_DURATION,
+    stride_duration: float = DEFAULT_STRIDE_DURATION,
+    total_flight_time: float = DEFAULT_TOTAL_FLIGHT_TIME,
+    context: Optional[Dict] = None,
+    show_plot: bool = False,
+    use_feet: bool = False,
+) -> Dict:
+    """Evaluate model and compute average predictions across all flights."""
+    ctx = context or _build_context(
+        timestep=timestep,
+        window_duration=window_duration,
+        stride_duration=stride_duration,
+        total_flight_time=total_flight_time,
+    )
+
+    model = load_model(model_type, input_dim=ctx["X"].shape[1], model_dir=ctx["model_dir"])
+
+    X_scaled = ctx["input_scaler"].transform(ctx["X"])
+    y_pred_scaled = run_inference(model_type, model, X_scaled)
+    y_pred = ctx["target_scaler"].inverse_transform(y_pred_scaled).flatten()
+    y_true = ctx["y_true"].flatten()
+
+    # Unit conversion
+    unit_label = "m"
+    if use_feet:
+        y_pred = y_pred * 3.28084
+        y_true = y_true * 3.28084
+        unit_label = "ft"
+
+    # Calculate global metrics
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = float(np.sqrt(mse))
+    global_mae = float(np.mean(np.abs(y_pred - y_true)))
+    global_max_error = float(np.max(np.abs(y_pred - y_true)))
+
+    # Reshape predictions by flight for averaging
+    samples_per_flight = ctx["samples_per_flight"]
+    num_flights = len(y_pred) // samples_per_flight
+    
+    # Truncate to full flights only
+    y_pred = y_pred[:num_flights * samples_per_flight]
+    y_true = y_true[:num_flights * samples_per_flight]
+
+    preds_by_flight = y_pred.reshape(num_flights, samples_per_flight)
+    true_by_flight = y_true.reshape(num_flights, samples_per_flight)
+
+    # Average predictions across all flights at each time step
+    mean_preds = np.mean(preds_by_flight, axis=0)
+    std_preds = np.std(preds_by_flight, axis=0)
+
+    # Apply time mask for plotting
+    use_full_window = plot_max_time is None or plot_max_time <= 0
+    if use_full_window:
+        masked_time = ctx["time_axis"]
+        masked_mean_preds = mean_preds
+    else:
+        mask = ctx["time_axis"] <= plot_max_time
+        masked_time = ctx["time_axis"][mask]
+        masked_mean_preds = mean_preds[mask] if len(mean_preds) >= len(mask) else mean_preds[:len(mask)][mask[:len(mean_preds)]]
+        if len(masked_time) == 0:
+            masked_time = ctx["time_axis"]
+            masked_mean_preds = mean_preds
+
+    avg_true_apogee = float(np.mean(true_by_flight[:, 0]))  # Average true apogee
+    # Keep error margin in native units scalar
+    error_margin = (ERROR_MARGIN_FRACTION * avg_true_apogee) if not use_feet else ((ERROR_MARGIN_FRACTION * (avg_true_apogee / 3.28084)) * 3.28084)
+    # Ideally simpler: ratio is unitless, so just fraction * val
+    error_margin = ERROR_MARGIN_FRACTION * avg_true_apogee
+
+    # Build figure
+    if show_plot:
+        fig, ax = plt.subplots(figsize=(7.5, 4.2))
+    else:
+        fig = Figure(figsize=(7.5, 4.2))
+        ax = fig.add_subplot(111)
+
+    ax.plot(masked_time, masked_mean_preds, color="#1e3a5f", marker="o", linestyle="-", 
+            label="Mean Predicted", markersize=4)
+    # Scaled removed: ax.fill_between(...)
+    ax.hlines(avg_true_apogee, masked_time[0], masked_time[-1], colors="r", linestyles="--", 
+              label="True Apogee")
+    ax.fill_between(
+        masked_time,
+        avg_true_apogee - error_margin,
+        avg_true_apogee + error_margin,
+        color="r",
+        alpha=0.1,
+        label=f"±{ERROR_MARGIN_FRACTION * 100:.1f}%",
+    )
+
+    # Shorten title
+    ax.set_title(f"{model_type} (Avg {num_flights} Flights)")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel(f"Apogee ({unit_label})")
+    ax.set_xlim(min(masked_time), max(masked_time))
+    ax.legend(loc="lower right")
+    ax.grid(True, alpha=0.3)
+    
+    # NARROW Y-AXIS: Use only mean predictions and error margin, ignore STD deviations
+    plot_min = float(min(np.min(masked_mean_preds), avg_true_apogee - error_margin))
+    plot_max = float(max(np.max(masked_mean_preds), avg_true_apogee + error_margin))
+    
+    # Add a tiny padding (5%) so points aren't exactly on edge
+    rng = plot_max - plot_min
+    if rng > 0:
+        plot_min -= rng * 0.05
+        plot_max += rng * 0.05
+
+    ax.set_ylim(plot_min, plot_max)
+    fig.tight_layout()
+
+    if show_plot:
+        plt.show(block=True)
+
+    return {
+        "figure": fig,
+        "rmse": rmse,
+        "mean_abs_error": global_mae,
+        "max_error": global_max_error,
+        "target_apogee": avg_true_apogee,
+        "num_flights": num_flights,
+        "model_type": model_type,
+        "plot_min": plot_min,
+        "plot_max": plot_max,
+    }
 
 def main():
     args = parse_args()

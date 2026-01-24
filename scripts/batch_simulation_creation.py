@@ -90,7 +90,7 @@ for key, p in parachute_params.items():
     )
 
 # Sweep parameters
-wind_speeds = np.arange(0, 12, 3)
+wind_speeds = np.arange(0, 13, 1)  # 1 m/s granularity: 0-12 m/s
 temps = np.arange(273, 307, 10)
 launch_angles = np.arange(0, 8, 1)
 #masses = np.arange(12, 14.5, 0.5)
@@ -106,6 +106,11 @@ colnames += [f"Vertical velocity (m/s) @ {t:.2f}s" for t in timesteps]
 colnames += [f"Vertical acceleration (m/s^2) @ {t:.2f}s" for t in timesteps]
 colnames += [f"Total velocity (m/s) @ {t:.2f}s" for t in timesteps]
 colnames += [f"Altitude (m) @ {t:.2f}s" for t in timesteps]
+colnames += [f"Horizontal velocity (m/s) @ {t:.2f}s" for t in timesteps]
+colnames += [f"Pitch angle (deg) @ {t:.2f}s" for t in timesteps]
+colnames += [f"Dynamic pressure (Pa) @ {t:.2f}s" for t in timesteps]
+colnames += [f"Mach number @ {t:.2f}s" for t in timesteps]
+colnames += [f"Pressure (Pa) @ {t:.2f}s" for t in timesteps]
 
 all_rows = []
 
@@ -188,6 +193,12 @@ for wind in wind_speeds:
             time = flight.time
             stream_acc_v = flight.az.y_array
             altitude = flight.altitude.y_array
+            
+            # New features from RocketPy
+            pitch_angle = flight.theta.y_array  # nutation angle (pitch) in degrees
+            dynamic_pressure = flight.dynamic_pressure.y_array
+            mach_number = flight.mach_number.y_array
+            pressure = flight.pressure.y_array
 
 
             # Ensure all arrays are the same length
@@ -196,7 +207,11 @@ for wind in wind_speeds:
             stream_velocity_z = stream_velocity_z[:min_len]
             stream_velocity_x = stream_velocity_x[:min_len]
             stream_velocity_y = stream_velocity_y[:min_len]
-            altitude = altitude[:min_len] 
+            altitude = altitude[:min_len]
+            pitch_angle = pitch_angle[:min_len]
+            dynamic_pressure = dynamic_pressure[:min_len]
+            mach_number = mach_number[:min_len]
+            pressure = pressure[:min_len]
 
             # Convert all data to fixed, clean timestamps, using interpolation
             v_vel = np.interp(timesteps, time, stream_velocity_z)
@@ -213,18 +228,41 @@ for wind in wind_speeds:
                     stream_velocity_z ** 2
                 )
             )
+            
+            # Calculate horizontal velocity magnitude
+            h_vel = np.interp(
+                timesteps,
+                time,
+                np.sqrt(stream_velocity_x ** 2 + stream_velocity_y ** 2)
+            )
+            
+            # Interpolate new features
+            pitch_interp = np.interp(timesteps, time, pitch_angle)
+            dynp_interp = np.interp(timesteps, time, dynamic_pressure)
+            mach_interp = np.interp(timesteps, time, mach_number)
+            pres_interp = np.interp(timesteps, time, pressure)
 
             # Pad with NaN after apogee
             v_vel_padded = np.where(valid_mask, v_vel, np.nan)
             v_acc_padded = np.where(valid_mask, v_acc, np.nan)
             t_vel_padded = np.where(valid_mask, t_vel, np.nan)
             alt_interp_padded = np.where(valid_mask, alt_interp, np.nan)
+            h_vel_padded = np.where(valid_mask, h_vel, np.nan)
+            pitch_padded = np.where(valid_mask, pitch_interp, np.nan)
+            dynp_padded = np.where(valid_mask, dynp_interp, np.nan)
+            mach_padded = np.where(valid_mask, mach_interp, np.nan)
+            pres_padded = np.where(valid_mask, pres_interp, np.nan)
 
             row = [wind, temp, angle, apogee_alt, apogee_time]
             row += v_vel_padded.tolist()
             row += v_acc_padded.tolist()
             row += t_vel_padded.tolist()
             row += alt_interp_padded.tolist()
+            row += h_vel_padded.tolist()
+            row += pitch_padded.tolist()
+            row += dynp_padded.tolist()
+            row += mach_padded.tolist()
+            row += pres_padded.tolist()
             all_rows.append(row)
 
 # DataFrame and Save
