@@ -10,7 +10,10 @@ from rocket_parameter_loader import load_parameters
 
 # Load parameters from JSON
 params = load_parameters()
-data_dir = Path(__file__).resolve().parents[1] / "rocket-info"
+project_root = Path(__file__).resolve().parents[1]
+data_dir = project_root / "rocket-info"
+output_dir = project_root / "data" / "raw"
+output_dir.mkdir(parents=True, exist_ok=True)
 
 motor_params = params["motors"]
 nosecone_params = params["nosecones"]
@@ -266,7 +269,8 @@ for wind in wind_speeds:
             all_rows.append(row)
 
 # DataFrame and Save
+output_path = output_dir / "batch_dataset_v1.csv"
 df = pd.DataFrame(all_rows, columns=colnames)
-df.to_csv("batch_dataset_v1.csv", index=False)
-print("Simulation data saved as batch_dataset_v1.csv")
+df.to_csv(output_path, index=False)
+print(f"Simulation data saved as {output_path}")
 
