@@ -487,21 +487,34 @@ def plot_2d_average_flight(traj_data: Dict):
     mean_alt = np.nanmean(altitude, axis=0)
     std_alt = np.nanstd(altitude, axis=0)
     
+    # CUTOFF: Truncate when < 10% of flights are active to avoid survivorship bias
+    active_counts = np.sum(~np.isnan(altitude), axis=0)
+    cutoff_threshold = int(altitude.shape[0] * 0.1)
+    cutoff_indices = np.where(active_counts < cutoff_threshold)[0]
+    cutoff_idx = cutoff_indices[0] if len(cutoff_indices) > 0 else len(timesteps)
+    
+    plot_timesteps = timesteps[:cutoff_idx]
+    plot_mean_alt = mean_alt[:cutoff_idx]
+    plot_std_alt = std_alt[:cutoff_idx]
+    
     # Plot mean with confidence bands
-    ax.plot(timesteps, mean_alt, color='#2c3e50', linewidth=3, label='Mean Trajectory')
-    ax.fill_between(timesteps, 
-                    np.maximum(0, mean_alt - std_alt), 
-                    mean_alt + std_alt, 
+    ax.plot(plot_timesteps, plot_mean_alt, color='#2c3e50', linewidth=3, label='Mean Trajectory')
+    ax.fill_between(plot_timesteps, 
+                    np.maximum(0, plot_mean_alt - plot_std_alt), 
+                    plot_mean_alt + plot_std_alt, 
                     color='#3498db', alpha=0.3, label='±1 Std Dev')
-    ax.fill_between(timesteps, 
-                    np.maximum(0, mean_alt - 2*std_alt), 
-                    mean_alt + 2*std_alt, 
+    ax.fill_between(plot_timesteps, 
+                    np.maximum(0, plot_mean_alt - 2*plot_std_alt), 
+                    plot_mean_alt + 2*plot_std_alt, 
                     color='#3498db', alpha=0.15, label='±2 Std Dev')
     
-    # Mark mean apogee
-    apogee_idx = np.argmax(mean_alt)
-    ax.scatter([timesteps[apogee_idx]], [mean_alt[apogee_idx]], 
-               s=150, c='red', zorder=5, marker='*', label=f'Mean Apogee: {mean_alt[apogee_idx]:.0f}ft')
+    # Mark mean apogee (using scalar mean of all apogees, not peak of average curve)
+    apogees = traj_data['apogee']
+    true_mean_apogee = np.mean(apogees)
+    mean_apogee_time = np.mean(traj_data['apogee_time'])
+    
+    ax.scatter([mean_apogee_time], [true_mean_apogee], 
+               s=150, c='red', zorder=5, marker='*', label=f'Mean Apogee: {true_mean_apogee:.0f}ft')
     
     # Add min/max altitude to legend
     apogees = traj_data['apogee']
@@ -624,6 +637,20 @@ def plot_3d_average_flight(traj_data: Dict):
     std_Y = np.nanstd(Y, axis=0)
     std_Z = np.nanstd(Z, axis=0)
     
+    # CUTOFF: Truncate when < 10% of flights are active to avoid survivorship bias
+    active_counts = np.sum(~np.isnan(Z), axis=0)
+    cutoff_threshold = int(Z.shape[0] * 0.1)
+    cutoff_indices = np.where(active_counts < cutoff_threshold)[0]
+    cutoff_idx = cutoff_indices[0] if len(cutoff_indices) > 0 else Z.shape[1]
+    
+    # Truncate arrays
+    mean_X = mean_X[:cutoff_idx]
+    mean_Y = mean_Y[:cutoff_idx]
+    mean_Z = mean_Z[:cutoff_idx]
+    std_X = std_X[:cutoff_idx]
+    std_Y = std_Y[:cutoff_idx]
+    std_Z = std_Z[:cutoff_idx]
+    
     fig = plt.figure(figsize=(14, 10))
     ax = fig.add_subplot(111, projection='3d')
     
@@ -645,11 +672,20 @@ def plot_3d_average_flight(traj_data: Dict):
         ax.scatter([mean_X[i]], [mean_Y[i] - std_Y[i]], [mean_Z[i]], 
                    c='blue', alpha=0.1, s=20)
     
-    # Mark apogee
-    apogee_idx = np.argmax(mean_Z)
-    ax.scatter([mean_X[apogee_idx]], [mean_Y[apogee_idx]], [mean_Z[apogee_idx]], 
+    # Mark mean apogee (using scalar mean of all apogees)
+    # We need approximate X/Y for mean apogee time. Interpolate from mean X/Y trajectory
+    apogees = traj_data['apogee']
+    true_mean_apogee = np.mean(apogees)
+    mean_apogee_time = np.mean(traj_data['apogee_time'])
+    timesteps = traj_data['timesteps']
+    
+    # Values at mean apogee time
+    apogee_X = np.interp(mean_apogee_time, timesteps[:cutoff_idx], mean_X)
+    apogee_Y = np.interp(mean_apogee_time, timesteps[:cutoff_idx], mean_Y)
+    
+    ax.scatter([apogee_X], [apogee_Y], [true_mean_apogee], 
                s=200, c='gold', marker='*', edgecolors='black', linewidth=1,
-               label=f'Mean Apogee: {mean_Z[apogee_idx]:.0f}ft', zorder=10)
+               label=f'Mean Apogee: {true_mean_apogee:.0f}ft', zorder=10)
     
     # Add min/max altitude to legend
     apogees = traj_data['apogee']
