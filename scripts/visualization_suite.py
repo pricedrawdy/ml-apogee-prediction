@@ -41,7 +41,13 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 TIMESTEP_INTERVAL = 0.025
 WINDOW_SEC = 2.5
 STRIDE_SEC = 0.25
+TIMESTEP_INTERVAL = 0.025
+WINDOW_SEC = 2.5
+STRIDE_SEC = 0.25
 TOTAL_TIME_SEC = 25.0
+
+# === Unit Conversion ===
+M_TO_FT = 3.28084
 
 WINDOW_SIZE = int(WINDOW_SEC / TIMESTEP_INTERVAL)
 STRIDE = int(STRIDE_SEC / TIMESTEP_INTERVAL)
@@ -157,14 +163,14 @@ def extract_trajectory_columns(df: pd.DataFrame) -> Dict[str, np.ndarray]:
     
     result = {
         'timesteps': timesteps,
-        'altitude': df[[c for c in cols if c.startswith("Altitude (m) @")]].values,
-        'vertical_velocity': df[[c for c in cols if c.startswith("Vertical velocity (m/s) @")]].values,
-        'horizontal_velocity': df[[c for c in cols if c.startswith("Horizontal velocity (m/s) @")]].values,
-        'total_velocity': df[[c for c in cols if c.startswith("Total velocity (m/s) @")]].values,
+        'altitude': df[[c for c in cols if c.startswith("Altitude (m) @")]].values * M_TO_FT,
+        'vertical_velocity': df[[c for c in cols if c.startswith("Vertical velocity (m/s) @")]].values * M_TO_FT,
+        'horizontal_velocity': df[[c for c in cols if c.startswith("Horizontal velocity (m/s) @")]].values * M_TO_FT,
+        'total_velocity': df[[c for c in cols if c.startswith("Total velocity (m/s) @")]].values * M_TO_FT,
         'mach': df[[c for c in cols if c.startswith("Mach number @")]].values,
-        'apogee': df["Apogee altitude (m)"].values,
+        'apogee': df["Apogee altitude (m)"].values * M_TO_FT,
         'apogee_time': df["Apogee time (s)"].values,
-        'wind_speed': df["Wind Speed (m/s)"].values,
+        'wind_speed': df["Wind Speed (m/s)"].values * M_TO_FT,
         'temperature': df["Temperature (K)"].values,
         'launch_angle': df["Launch Angle (deg)"].values,
     }
@@ -187,18 +193,25 @@ def compute_all_model_metrics(models: Dict, X: np.ndarray, y: np.ndarray) -> Dic
     for name in ['MLP', 'Random Forest', 'Linear Regression']:
         y_pred = predict_with_model(models[name], name, X_scaled, target_scaler)
         
-        rmse = np.sqrt(mean_squared_error(y, y_pred))
-        mae = mean_absolute_error(y, y_pred)
+        # Calculate metrics in meters first (standard) then convert for display
+        rmse_m = np.sqrt(mean_squared_error(y, y_pred))
+        mae_m = mean_absolute_error(y, y_pred)
         r2 = r2_score(y, y_pred)
         
+        # Convert to feet
+        rmse_ft = rmse_m * M_TO_FT
+        mae_ft = mae_m * M_TO_FT
+        y_pred_ft = y_pred * M_TO_FT
+        errors_ft = (y_pred - y) * M_TO_FT
+        
         metrics[name] = {
-            'rmse': rmse,
-            'mae': mae,
+            'rmse': rmse_ft,
+            'mae': mae_ft,
             'r2': r2,
-            'predictions': y_pred,
-            'errors': y_pred - y
+            'predictions': y_pred_ft,
+            'errors': errors_ft
         }
-        print(f"  {name}: RMSE={rmse:.2f}m, MAE={mae:.2f}m, R²={r2:.4f}")
+        print(f"  {name}: RMSE={rmse_ft:.2f}ft, MAE={mae_ft:.2f}ft, R²={r2:.4f}")
     
     return metrics
 
@@ -216,21 +229,21 @@ def plot_model_comparison_bar(metrics: Dict):
     
     # RMSE bars
     bars1 = axes[0].bar(model_names, rmse_values, color=colors, edgecolor='black', linewidth=1.2)
-    axes[0].set_ylabel('RMSE (meters)', fontsize=12)
+    axes[0].set_ylabel('RMSE (feet)', fontsize=12)
     axes[0].set_title('Root Mean Square Error by Model', fontsize=14, fontweight='bold')
     axes[0].set_ylim(0, max(rmse_values) * 1.15)
     for bar, val in zip(bars1, rmse_values):
         axes[0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, 
-                    f'{val:.1f}m', ha='center', va='bottom', fontsize=11, fontweight='bold')
+                    f'{val:.1f}ft', ha='center', va='bottom', fontsize=11, fontweight='bold')
     
     # MAE bars
     bars2 = axes[1].bar(model_names, mae_values, color=colors, edgecolor='black', linewidth=1.2)
-    axes[1].set_ylabel('MAE (meters)', fontsize=12)
+    axes[1].set_ylabel('MAE (feet)', fontsize=12)
     axes[1].set_title('Mean Absolute Error by Model', fontsize=14, fontweight='bold')
     axes[1].set_ylim(0, max(mae_values) * 1.15)
     for bar, val in zip(bars2, mae_values):
         axes[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1, 
-                    f'{val:.1f}m', ha='center', va='bottom', fontsize=11, fontweight='bold')
+                    f'{val:.1f}ft', ha='center', va='bottom', fontsize=11, fontweight='bold')
     
     plt.tight_layout()
     save_path = OUTPUT_DIR / "model_comparison_bar.png"
@@ -255,8 +268,8 @@ def plot_pred_vs_actual(metrics: Dict, y_true: np.ndarray):
         lims = [min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())]
         ax.plot(lims, lims, 'k--', linewidth=2, label='Perfect Prediction')
         
-        ax.set_xlabel('Actual Apogee (m)', fontsize=12)
-        ax.set_ylabel('Predicted Apogee (m)', fontsize=12)
+        ax.set_xlabel('Actual Apogee (ft)', fontsize=12)
+        ax.set_ylabel('Predicted Apogee (ft)', fontsize=12)
         ax.set_title(f'{name}\nR² = {data["r2"]:.4f}', fontsize=14, fontweight='bold')
         ax.legend(loc='lower right')
         ax.set_aspect('equal', adjustable='box')
@@ -298,8 +311,11 @@ def plot_error_vs_time(models: Dict, test_df: pd.DataFrame, y_true: np.ndarray):
         for flight_idx in range(num_flights):
             start = flight_idx * SAMPLES_PER_FLIGHT
             end = start + SAMPLES_PER_FLIGHT
-            true_apogee = y_true[start][0]
-            preds_i = y_pred[start:end].flatten()[time_mask]
+            
+            # Convert to feet for error calculation
+            true_apogee = y_true[start][0] * M_TO_FT
+            preds_i = y_pred[start:end].flatten()[time_mask] * M_TO_FT
+            
             abs_errors.append(np.abs(preds_i - true_apogee))
         
         abs_errors = np.vstack(abs_errors)
@@ -314,7 +330,7 @@ def plot_error_vs_time(models: Dict, test_df: pd.DataFrame, y_true: np.ndarray):
                         color=color, alpha=0.15)
     
     ax.set_xlabel('Time into Flight (s)', fontsize=13)
-    ax.set_ylabel('Mean Absolute Error (m)', fontsize=13)
+    ax.set_ylabel('Mean Absolute Error (ft)', fontsize=13)
     ax.set_title('Prediction Error vs Flight Time - Model Comparison', fontsize=16, fontweight='bold')
     ax.legend(fontsize=12, loc='upper right')
     ax.grid(True, alpha=0.3)
@@ -356,7 +372,7 @@ def plot_error_distributions(metrics: Dict):
     ax.axhline(0, color='black', linestyle='--', linewidth=1, alpha=0.7)
     ax.set_xticks([1, 2, 3])
     ax.set_xticklabels(labels, fontsize=12)
-    ax.set_ylabel('Prediction Error (m)', fontsize=13)
+    ax.set_ylabel('Prediction Error (ft)', fontsize=13)
     ax.set_title('Error Distribution by Model', fontsize=16, fontweight='bold')
     ax.grid(True, alpha=0.3, axis='y')
     
@@ -431,11 +447,21 @@ def plot_2d_all_flights(traj_data: Dict):
     # Add colorbar
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
+    # Add colorbar
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax)
-    cbar.set_label('Apogee Altitude (m)', fontsize=12)
+    cbar.set_label('Apogee Altitude (ft)', fontsize=12)
+    
+    # Add legend with min/max altitude
+    min_apogee = apogees.min()
+    max_apogee = apogees.max()
+    ax.plot([], [], ' ', label=f'Min Apogee: {min_apogee:.0f}ft')
+    ax.plot([], [], ' ', label=f'Max Apogee: {max_apogee:.0f}ft')
+    ax.legend(loc='upper left', fontsize=11, framealpha=0.9)
     
     ax.set_xlabel('Time (s)', fontsize=13)
-    ax.set_ylabel('Altitude (m)', fontsize=13)
+    ax.set_ylabel('Altitude (ft)', fontsize=13)
     ax.set_title(f'All Flight Trajectories (n={num_flights})', fontsize=16, fontweight='bold')
     ax.grid(True, alpha=0.3)
     ax.set_xlim(0, 27)
@@ -475,12 +501,17 @@ def plot_2d_average_flight(traj_data: Dict):
     # Mark mean apogee
     apogee_idx = np.argmax(mean_alt)
     ax.scatter([timesteps[apogee_idx]], [mean_alt[apogee_idx]], 
-               s=150, c='red', zorder=5, marker='*', label=f'Mean Apogee: {mean_alt[apogee_idx]:.0f}m')
+               s=150, c='red', zorder=5, marker='*', label=f'Mean Apogee: {mean_alt[apogee_idx]:.0f}ft')
+    
+    # Add min/max altitude to legend
+    apogees = traj_data['apogee']
+    ax.plot([], [], ' ', label=f'Min Apogee: {apogees.min():.0f}ft')
+    ax.plot([], [], ' ', label=f'Max Apogee: {apogees.max():.0f}ft')
     
     ax.set_xlabel('Time (s)', fontsize=13)
-    ax.set_ylabel('Altitude (m)', fontsize=13)
+    ax.set_ylabel('Altitude (ft)', fontsize=13)
     ax.set_title('Average Flight Trajectory with Confidence Bands', fontsize=16, fontweight='bold')
-    ax.legend(loc='upper right', fontsize=11)
+    ax.legend(loc='upper left', fontsize=11)
     ax.grid(True, alpha=0.3)
     ax.set_xlim(0, 27)
     ax.set_ylim(0, None)
@@ -549,16 +580,24 @@ def plot_3d_all_flights(traj_data: Dict):
         color = cmap(norm(apogees[i]))
         ax.plot(X[i, mask], Y[i, mask], Z[i, mask], alpha=0.5, linewidth=0.8, color=color)
     
-    ax.set_xlabel('X Distance (m)', fontsize=11)
-    ax.set_ylabel('Y Distance (m)', fontsize=11)
-    ax.set_zlabel('Altitude (m)', fontsize=11)
     ax.set_title(f'3D Flight Trajectories (n={num_flights})', fontsize=16, fontweight='bold')
     
     # Add colorbar
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax, shrink=0.6, pad=0.1)
-    cbar.set_label('Apogee Altitude (m)', fontsize=11)
+    cbar.set_label('Apogee Altitude (ft)', fontsize=11)
+    
+    # Add legend with min/max altitude
+    min_apogee = apogees.min()
+    max_apogee = apogees.max()
+    ax.plot([], [], [], ' ', label=f'Min Apogee: {min_apogee:.0f}ft')
+    ax.plot([], [], [], ' ', label=f'Max Apogee: {max_apogee:.0f}ft')
+    ax.legend(loc='upper left', fontsize=10, framealpha=0.9)
+    
+    ax.set_xlabel('X Distance (ft)', fontsize=11)
+    ax.set_ylabel('Y Distance (ft)', fontsize=11)
+    ax.set_zlabel('Altitude (ft)', fontsize=11)
     
     ax.view_init(elev=25, azim=45)
     
@@ -610,11 +649,16 @@ def plot_3d_average_flight(traj_data: Dict):
     apogee_idx = np.argmax(mean_Z)
     ax.scatter([mean_X[apogee_idx]], [mean_Y[apogee_idx]], [mean_Z[apogee_idx]], 
                s=200, c='gold', marker='*', edgecolors='black', linewidth=1,
-               label=f'Mean Apogee: {mean_Z[apogee_idx]:.0f}m', zorder=10)
+               label=f'Mean Apogee: {mean_Z[apogee_idx]:.0f}ft', zorder=10)
     
-    ax.set_xlabel('X Distance (m)', fontsize=11)
-    ax.set_ylabel('Y Distance (m)', fontsize=11)
-    ax.set_zlabel('Altitude (m)', fontsize=11)
+    # Add min/max altitude to legend
+    apogees = traj_data['apogee']
+    ax.plot([], [], [], ' ', label=f'Min Apogee: {apogees.min():.0f}ft')
+    ax.plot([], [], [], ' ', label=f'Max Apogee: {apogees.max():.0f}ft')
+    
+    ax.set_xlabel('X Distance (ft)', fontsize=11)
+    ax.set_ylabel('Y Distance (ft)', fontsize=11)
+    ax.set_zlabel('Altitude (ft)', fontsize=11)
     ax.set_title('Average 3D Flight Trajectory', fontsize=16, fontweight='bold')
     ax.legend(loc='upper left', fontsize=11)
     
@@ -641,11 +685,11 @@ def plot_apogee_distribution(traj_data: Dict):
     
     ax.hist(apogees, bins=30, color='#9b59b6', edgecolor='black', alpha=0.7)
     ax.axvline(np.mean(apogees), color='red', linestyle='--', linewidth=2, 
-               label=f'Mean: {np.mean(apogees):.0f}m')
+               label=f'Mean: {np.mean(apogees):.0f}ft')
     ax.axvline(np.median(apogees), color='orange', linestyle='--', linewidth=2, 
-               label=f'Median: {np.median(apogees):.0f}m')
+               label=f'Median: {np.median(apogees):.0f}ft')
     
-    ax.set_xlabel('Apogee Altitude (m)', fontsize=13)
+    ax.set_xlabel('Apogee Altitude (ft)', fontsize=13)
     ax.set_ylabel('Number of Flights', fontsize=13)
     ax.set_title('Distribution of Apogee Altitudes', fontsize=16, fontweight='bold')
     ax.legend(fontsize=12)
@@ -674,7 +718,7 @@ def plot_velocity_profiles(traj_data: Dict):
     axes[0].fill_between(timesteps, mean_v - std_v, mean_v + std_v, color='#27ae60', alpha=0.2)
     axes[0].axhline(0, color='black', linestyle='--', linewidth=1)
     axes[0].set_xlabel('Time (s)', fontsize=12)
-    axes[0].set_ylabel('Velocity (m/s)', fontsize=12)
+    axes[0].set_ylabel('Velocity (ft/s)', fontsize=12)
     axes[0].set_title('Vertical Velocity', fontsize=14, fontweight='bold')
     axes[0].grid(True, alpha=0.3)
     
@@ -686,7 +730,7 @@ def plot_velocity_profiles(traj_data: Dict):
     axes[1].fill_between(timesteps, np.maximum(0, mean_h - std_h), mean_h + std_h, 
                          color='#e67e22', alpha=0.2)
     axes[1].set_xlabel('Time (s)', fontsize=12)
-    axes[1].set_ylabel('Velocity (m/s)', fontsize=12)
+    axes[1].set_ylabel('Velocity (ft/s)', fontsize=12)
     axes[1].set_title('Horizontal Velocity', fontsize=14, fontweight='bold')
     axes[1].grid(True, alpha=0.3)
     
@@ -698,7 +742,7 @@ def plot_velocity_profiles(traj_data: Dict):
     axes[2].fill_between(timesteps, np.maximum(0, mean_t - std_t), mean_t + std_t, 
                          color='#8e44ad', alpha=0.2)
     axes[2].set_xlabel('Time (s)', fontsize=12)
-    axes[2].set_ylabel('Velocity (m/s)', fontsize=12)
+    axes[2].set_ylabel('Velocity (ft/s)', fontsize=12)
     axes[2].set_title('Total Velocity', fontsize=14, fontweight='bold')
     axes[2].grid(True, alpha=0.3)
     
