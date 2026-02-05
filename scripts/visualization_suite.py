@@ -51,7 +51,9 @@ M_TO_FT = 3.28084
 
 WINDOW_SIZE = int(WINDOW_SEC / TIMESTEP_INTERVAL)
 STRIDE = int(STRIDE_SEC / TIMESTEP_INTERVAL)
-SAMPLES_PER_FLIGHT = int(((TOTAL_TIME_SEC / TIMESTEP_INTERVAL) - WINDOW_SIZE) // STRIDE + 1)
+WINDOW_SIZE = int(WINDOW_SEC / TIMESTEP_INTERVAL)
+STRIDE = int(STRIDE_SEC / TIMESTEP_INTERVAL)
+# SAMPLES_PER_FLIGHT will be determined dynamically from data
 
 # === Plot style ===
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -141,7 +143,28 @@ def load_test_data() -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     test_df = pd.read_csv(PROCESSED_DIR / "sliding_test_by_flight.csv")
     X = test_df.drop(columns=["Apogee"]).values
     y = test_df["Apogee"].values.reshape(-1, 1)
-    print(f"  ✓ Loaded {len(test_df)} samples from {len(test_df) // SAMPLES_PER_FLIGHT} flights")
+    
+    # Detect samples per flight by checking where Apogee changes
+    # (Apogee is constant within a flight)
+    apogee_vals = test_df["Apogee"].values
+    if len(apogee_vals) > 0:
+        # Find indices where value changes
+        # We assume consistent block size
+        changes = np.where(apogee_vals[:-1] != apogee_vals[1:])[0] + 1
+        if len(changes) > 0:
+            samples_per_flight = changes[0]
+        else:
+            samples_per_flight = len(test_df) # Only one flight
+    else:
+        samples_per_flight = 1
+        
+    print(f"  ✓ Loaded {len(test_df)} samples")
+    print(f"  ✓ Detected {samples_per_flight} samples per flight")
+    
+    # Store as global for use in other functions if needed, or pass it
+    global SAMPLES_PER_FLIGHT
+    SAMPLES_PER_FLIGHT = int(samples_per_flight)
+    
     return test_df, X, y
 
 
@@ -258,14 +281,17 @@ def plot_pred_vs_actual(metrics: Dict, y_true: np.ndarray):
     
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
     
+    # Convert actual to feet for plotting
+    y_true_ft = y_true * M_TO_FT
+    
     for ax, (name, data) in zip(axes, metrics.items()):
         y_pred = data['predictions']
         color = MODEL_COLORS[name]
         
-        ax.scatter(y_true, y_pred, alpha=0.3, s=10, c=color, label='Predictions')
+        ax.scatter(y_true_ft, y_pred, alpha=0.3, s=10, c=color, label='Predictions')
         
         # Perfect prediction line
-        lims = [min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())]
+        lims = [min(y_true_ft.min(), y_pred.min()), max(y_true_ft.max(), y_pred.max())]
         ax.plot(lims, lims, 'k--', linewidth=2, label='Perfect Prediction')
         
         ax.set_xlabel('Actual Apogee (ft)', fontsize=12)
