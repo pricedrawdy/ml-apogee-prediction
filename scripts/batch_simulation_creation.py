@@ -94,7 +94,7 @@ for key, p in parachute_params.items():
 
 # Sweep parameters
 wind_speeds = np.arange(0, 13, 1)  # 1 m/s granularity: 0-12 m/s
-temps = np.arange(273, 307, 10)
+temps = np.arange(280, 315, 2.5)
 launch_angles = np.arange(0, 8, 1)
 #masses = np.arange(12, 14.5, 0.5)
 
