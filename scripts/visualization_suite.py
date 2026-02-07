@@ -29,6 +29,8 @@ from typing import Dict, List, Tuple
 
 import joblib
 
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -117,14 +119,9 @@ MODEL_COLORS = {
 
 }
 
-
-
 # ============================================================================
-
 # MODEL LOADING
-
 # ============================================================================
-
 
 def load_apogee_mlp_class(models_path: Path):
 
@@ -151,46 +148,29 @@ def load_apogee_mlp_class(models_path: Path):
 
     return module.ApogeeMLP
 
-
-
 def load_all_models() -> Dict[str, object]:
 
     """Load all three model types and scalers."""
-
     print("Loading models and scalers...")
     
-
     # Load scalers
-
     input_scaler = joblib.load(SCALERS_DIR / "apogee_input_scaler.pkl")
-
     target_scaler = joblib.load(SCALERS_DIR / "apogee_target_scaler.pkl")
     
-
     # Load MLP
-
     test_df = pd.read_csv(PROCESSED_DIR / "sliding_test_by_flight.csv")
-
     input_dim = test_df.shape[1] - 1
-    
-
     ApogeeMLP = load_apogee_mlp_class(MODEL_DIR)
-
     mlp_model = ApogeeMLP(input_dim=input_dim)
-
     state = torch.load(MODEL_DIR / "apogee_mlp_model.pth", map_location="cpu")
     mlp_model.load_state_dict(state)
 
     mlp_model.eval()
     
-
     # Load Random Forest
-
     rf_model = joblib.load(MODEL_DIR / "apogee_random_forest.pkl")
     
-
     # Load Linear Regression
-
     lr_model = joblib.load(MODEL_DIR / "apogee_linear_regression.pkl")
     
 
@@ -211,14 +191,10 @@ def load_all_models() -> Dict[str, object]:
 
     }
 
-
-
 def predict_with_model(model, model_name: str, X_scaled: np.ndarray, 
-
                       target_scaler) -> np.ndarray:
 
     """Get predictions from a model."""
-
     if model_name == 'MLP':
 
         with torch.no_grad():
@@ -226,20 +202,13 @@ def predict_with_model(model, model_name: str, X_scaled: np.ndarray,
             y_pred_scaled = model(torch.tensor(X_scaled, dtype=torch.float32)).numpy()
 
     else:
-
         y_pred_scaled = model.predict(X_scaled).reshape(-1, 1)
     
-
     return target_scaler.inverse_transform(y_pred_scaled)
 
-
-
 # ============================================================================
-
 # DATA LOADING
-
 # ============================================================================
-
 
 def load_test_data() -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
 
@@ -295,8 +264,6 @@ def load_test_data() -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
 
     return test_df, X, y
 
-
-
 def load_raw_flight_data() -> pd.DataFrame:
 
     """Load raw flight trajectory data."""
@@ -307,8 +274,6 @@ def load_raw_flight_data() -> pd.DataFrame:
 
     print(f"  ✓ Loaded {len(df)} flights with {df.shape[1]} features")
     return df
-
-
 
 def extract_trajectory_columns(df: pd.DataFrame) -> Dict[str, np.ndarray]:
 
@@ -350,14 +315,9 @@ def extract_trajectory_columns(df: pd.DataFrame) -> Dict[str, np.ndarray]:
     }
     return result
 
-
-
 # ============================================================================
-
 # MODEL PERFORMANCE VISUALIZATIONS
-
 # ============================================================================
-
 
 def compute_all_model_metrics(models: Dict, X: np.ndarray, y: np.ndarray) -> Dict:
 
@@ -417,8 +377,6 @@ def compute_all_model_metrics(models: Dict, X: np.ndarray, y: np.ndarray) -> Dic
         print(f"  {name}: RMSE={rmse_ft:.2f}ft, MAE={mae_ft:.2f}ft, R²={r2:.4f}")
     
     return metrics
-
-
 
 def plot_model_comparison_bar(metrics: Dict):
 
@@ -482,8 +440,6 @@ def plot_model_comparison_bar(metrics: Dict):
 
     print(f"  ✓ Saved: {save_path}")
 
-
-
 def plot_pred_vs_actual(metrics: Dict, y_true: np.ndarray):
 
     """Create scatter plots of predicted vs actual for each model."""
@@ -535,7 +491,6 @@ def plot_pred_vs_actual(metrics: Dict, y_true: np.ndarray):
     plt.close()
 
     print(f"  ✓ Saved: {save_path}")
-
 
 def plot_mlp_feature_importance(models: Dict, feature_names: List[str], X_test: np.ndarray):
     """
@@ -627,8 +582,6 @@ def plot_mlp_feature_importance(models: Dict, feature_names: List[str], X_test: 
     plt.close()
     
     print(f"  ✓ Saved: {save_path}")
-
-
 
 def plot_error_vs_time(models: Dict, test_df: pd.DataFrame, y_true: np.ndarray):
 
@@ -735,8 +688,6 @@ def plot_error_vs_time(models: Dict, test_df: pd.DataFrame, y_true: np.ndarray):
 
     print(f"  ✓ Saved: {save_path}")
 
-
-
 def plot_error_distributions(metrics: Dict):
 
     """Create violin plots of error distributions for each model."""
@@ -806,54 +757,34 @@ def plot_error_distributions(metrics: Dict):
 
     print(f"  ✓ Saved: {save_path}")
 
-
 def plot_rf_feature_importance(models: Dict, feature_names: List[str]):
 
     """Plot feature importance for Random Forest model."""
 
     print("Generating Random Forest feature importance...")
     
-
     rf_model = models['Random Forest']
     importances = rf_model.feature_importances_
     
-
     # Get top 20 features
-
     top_n = 20
-
     indices = np.argsort(importances)[-top_n:][::-1]
-
     top_importances = importances[indices]
     
-
     # Feature groups from sliding_window_generator_v2.py
-
     feature_groups = [
-
         "Vertical Velocity",
-
         "Vertical Acceleration",
-
         "Total Velocity",
-
         "Horizontal Velocity",
-
         "Pitch Angle",
-
         "Dynamic Pressure",
-
         "Mach Number",
-
         "Pressure",
-
         "Relative Altitude",
-
         "Velocity Squared"
-
     ]
     
-
     # Generate cleaner labels if names are just numeric strings
 
     top_feature_names = []
@@ -905,7 +836,6 @@ def plot_rf_feature_importance(models: Dict, feature_names: List[str]):
 
     ax.grid(True, alpha=0.3, axis='x')
     
-
     plt.tight_layout()
 
     save_path = OUTPUT_DIR / "rf_feature_importance.png"
@@ -914,8 +844,6 @@ def plot_rf_feature_importance(models: Dict, feature_names: List[str]):
     plt.close()
 
     print(f"  ✓ Saved: {save_path}")
-
-
 
 def plot_lr_feature_importance(models: Dict, feature_names: List[str]):
 
@@ -1030,14 +958,9 @@ def plot_lr_feature_importance(models: Dict, feature_names: List[str]):
 
     print(f"  ✓ Saved: {save_path}")
 
-
-
 # ============================================================================
-
 # FLIGHT TRAJECTORY VISUALIZATIONS - 2D
-
 # ============================================================================
-
 
 def plot_2d_all_flights(traj_data: Dict):
 
@@ -1129,8 +1052,6 @@ def plot_2d_all_flights(traj_data: Dict):
     plt.close()
 
     print(f"  ✓ Saved: {save_path}")
-
-
 
 def plot_2d_average_flight(traj_data: Dict):
 
@@ -1239,14 +1160,9 @@ def plot_2d_average_flight(traj_data: Dict):
 
     print(f"  ✓ Saved: {save_path}")
 
-
-
 # ============================================================================
-
 # FLIGHT TRAJECTORY VISUALIZATIONS - 3D
-
 # ============================================================================
-
 
 def compute_3d_positions(traj_data: Dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -1299,8 +1215,6 @@ def compute_3d_positions(traj_data: Dict) -> Tuple[np.ndarray, np.ndarray, np.nd
     
 
     return X, Y, altitude
-
-
 
 def plot_3d_all_flights(traj_data: Dict):
 
@@ -1382,8 +1296,6 @@ def plot_3d_all_flights(traj_data: Dict):
     plt.close()
 
     print(f"  ✓ Saved: {save_path}")
-
-
 
 def plot_3d_average_flight(traj_data: Dict):
 
@@ -1535,14 +1447,9 @@ def plot_3d_average_flight(traj_data: Dict):
 
     print(f"  ✓ Saved: {save_path}")
 
-
-
 # ============================================================================
-
 # ADDITIONAL VISUALIZATIONS
-
 # ============================================================================
-
 
 def plot_apogee_distribution(traj_data: Dict):
 
@@ -1587,8 +1494,6 @@ def plot_apogee_distribution(traj_data: Dict):
     plt.close()
 
     print(f"  ✓ Saved: {save_path}")
-
-
 
 def plot_velocity_profiles(traj_data: Dict):
 
@@ -1681,8 +1586,6 @@ def plot_velocity_profiles(traj_data: Dict):
 
     print(f"  ✓ Saved: {save_path}")
 
-
-
 def plot_mach_profile(traj_data: Dict):
 
     """Plot Mach number profile."""
@@ -1739,24 +1642,16 @@ def plot_mach_profile(traj_data: Dict):
 
     print(f"  ✓ Saved: {save_path}")
 
-
-
 # ============================================================================
-
 # MAIN EXECUTION
-
 # ============================================================================
-
 
 def main():
 
     print("=" * 60)
-
     print("COMPREHENSIVE VISUALIZATION SUITE")
-
     print("=" * 60)
     print()
-    
 
     # Load everything
     models = load_all_models()
@@ -1768,14 +1663,10 @@ def main():
     traj_data = extract_trajectory_columns(raw_df)
     
     print()
-
     print("-" * 60)
-
     print("GENERATING MODEL PERFORMANCE VISUALIZATIONS")
-
     print("-" * 60)
     
-
     metrics = compute_all_model_metrics(models, X_test, y_test)
 
     plot_model_comparison_bar(metrics)
@@ -1786,71 +1677,47 @@ def main():
 
     plot_error_distributions(metrics)
     
-
     # Extract feature names
-
     feature_names = test_df.drop(columns=["Apogee"]).columns.tolist()
     plot_rf_feature_importance(models, feature_names)
     plot_lr_feature_importance(models, feature_names)
     plot_mlp_feature_importance(models, feature_names, X_test)
     
     print()
-
     print("-" * 60)
-
     print("GENERATING 2D FLIGHT TRAJECTORY VISUALIZATIONS")
-
     print("-" * 60)
-    
 
     plot_2d_all_flights(traj_data)
-
     plot_2d_average_flight(traj_data)
     
     print()
-
     print("-" * 60)
-
     print("GENERATING 3D FLIGHT TRAJECTORY VISUALIZATIONS")
-
     print("-" * 60)
     
-
     plot_3d_all_flights(traj_data)
-
     plot_3d_average_flight(traj_data)
     
     print()
-
     print("-" * 60)
-
     print("GENERATING ADDITIONAL VISUALIZATIONS")
-
     print("-" * 60)
-    
 
     plot_apogee_distribution(traj_data)
-
     plot_velocity_profiles(traj_data)
-
     plot_mach_profile(traj_data)
     
     print()
-
     print("=" * 60)
-
     print("VISUALIZATION SUITE COMPLETE")
-
     print("=" * 60)
-
     print(f"\nAll outputs saved to: {OUTPUT_DIR}")
-
     print("\nGenerated files:")
 
     for f in sorted(OUTPUT_DIR.glob("*.png")):
 
         print(f"  • {f.name}")
-
 
 
 if __name__ == "__main__":
