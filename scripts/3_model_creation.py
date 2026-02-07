@@ -30,7 +30,7 @@ from sklearn.preprocessing import StandardScaler
 # Paths
 CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "processed" / "sliding_train_by_flight.csv"
 SCALERS_DIR = Path(__file__).resolve().parent.parent / "data" / "scalers"
-MODEL_DIR = Path(__file__).resolve().parent
+MODEL_DIR = Path(__file__).resolve().parent.parent / "models"
 SCALERS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 

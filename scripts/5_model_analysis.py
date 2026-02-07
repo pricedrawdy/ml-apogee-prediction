@@ -24,7 +24,7 @@ target_scaler = joblib.load(scalers_dir / "apogee_target_scaler.pkl")
 # === Safely import model class (avoid Unicode print crash) ===
 def load_apogee_mlp_class(models_path: Path):
     spec = importlib.util.spec_from_file_location(
-        "apogee_model_module", str(models_path / "apogee_prediction_model_v1.py")
+        "apogee_model_module", str(root_dir / "scripts" / "3_model_creation.py")
     )
     module = importlib.util.module_from_spec(spec)
     # Silence stdout/stderr during import to avoid encoding errors on Windows console

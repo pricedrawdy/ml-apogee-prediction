@@ -129,7 +129,7 @@ def load_apogee_mlp_class(models_path: Path):
 
     spec = importlib.util.spec_from_file_location(
 
-        "apogee_model_module", str(models_path / "apogee_prediction_model_v1.py")
+        "apogee_model_module", str(ROOT_DIR / "scripts" / "3_model_creation.py")
     )
 
     module = importlib.util.module_from_spec(spec)

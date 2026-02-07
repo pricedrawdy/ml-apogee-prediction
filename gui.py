@@ -99,17 +99,17 @@ def run_rocketserializer():
 
 
 def run_batch_simulation():
-    cmd = [sys.executable, str(domain_root / "scripts" / "batch_simulation_creation.py")]
+    cmd = [sys.executable, str(domain_root / "scripts" / "1_batch_simulation_creation.py")]
     run_command(cmd, "Batch Simulation Creation")
 
 
 def run_sliding_window():
-    cmd = [sys.executable, str(domain_root / "scripts" / "sliding_window_generator_v2.py")]
+    cmd = [sys.executable, str(domain_root / "scripts" / "2_sliding_window_generator.py")]
     run_command(cmd, "Sliding Window Generator")
 
 
 def run_model_creation():
-    cmd = [sys.executable, str(domain_root / "models" / "apogee_prediction_model_v1.py")]
+    cmd = [sys.executable, str(domain_root / "scripts" / "3_model_creation.py")]
     run_command(cmd, "Model Creation")
 
 
@@ -118,8 +118,8 @@ def _load_test_module():
     if test_module is not None:
         return test_module
 
-    module_path = domain_root / "scripts" / "apogee_prediction_test_v1.1.py"
-    spec = importlib.util.spec_from_file_location("apogee_prediction_test_v1_1", module_path)
+    module_path = domain_root / "scripts" / "4_model_testing.py"
+    spec = importlib.util.spec_from_file_location("model_testing", module_path)
     if spec is None or spec.loader is None:
         raise ImportError("Unable to load apogee_prediction_test_v1.1.py")
     module = importlib.util.module_from_spec(spec)
