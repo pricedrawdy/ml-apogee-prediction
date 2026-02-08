@@ -16,6 +16,8 @@ root_dir = Path(__file__).resolve().parent.parent
 scalers_dir = root_dir / "data" / "scalers"
 model_dir = root_dir / "models"
 data_dir = root_dir / "data" / "processed"
+output_dir = root_dir / "analysis_results"
+output_dir.mkdir(parents=True, exist_ok=True)
 
 # === Load scalers ===
 input_scaler = joblib.load(scalers_dir / "apogee_input_scaler.pkl")
@@ -196,7 +198,7 @@ def analyze_flight_predictions(test_df: pd.DataFrame, y_true: np.ndarray, y_pred
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(root_dir / "apogee_mean_abs_error.png", dpi=300)
+    plt.savefig(output_dir / "apogee_mean_abs_error.png", dpi=300)
     plt.show()
 
     # Signed bias over time
@@ -210,7 +212,7 @@ def analyze_flight_predictions(test_df: pd.DataFrame, y_true: np.ndarray, y_pred
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(root_dir / "apogee_mean_signed_error.png", dpi=300)
+    plt.savefig(output_dir / "apogee_mean_signed_error.png", dpi=300)
     plt.show()
 
     if len(time_to_convergence) > 0:
@@ -224,7 +226,7 @@ def analyze_flight_predictions(test_df: pd.DataFrame, y_true: np.ndarray, y_pred
         plt.legend()
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        plt.savefig(root_dir / "apogee_convergence_distribution.png", dpi=300)
+        plt.savefig(output_dir / "apogee_convergence_distribution.png", dpi=300)
         plt.show()
 
     # Optional: heatmap of relative error (cap flights shown for readability)
@@ -240,7 +242,7 @@ def analyze_flight_predictions(test_df: pd.DataFrame, y_true: np.ndarray, y_pred
         plt.xlabel("Time into Flight (s)")
         plt.ylabel("Flight #")
         plt.tight_layout()
-        plt.savefig(root_dir / "apogee_error_heatmap.png", dpi=300)
+        plt.savefig(output_dir / "apogee_error_heatmap.png", dpi=300)
         plt.show()
 
     # === Text summary ===
