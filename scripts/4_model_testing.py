@@ -1,0 +1,407 @@
+import argparse
+from pathlib import Path
+from typing import Dict, Optional
+
+import joblib
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+import numpy as np
+import pandas as pd
+import torch
+from sklearn.metrics import mean_squared_error
+
+# === Default configuration ===
+DEFAULT_FLIGHT_INDEX = 0            # Flight to analyze/plot (0-based)
+DEFAULT_TIMESTEP = 0.025            # Seconds
+DEFAULT_WINDOW_DURATION = 2.5       # Seconds
+DEFAULT_STRIDE_DURATION = 0.25      # Seconds
+DEFAULT_TOTAL_FLIGHT_TIME = 25.0    # Seconds (Total duration per flight in dataset)
+DEFAULT_PLOT_MAX_TIME = 0.0        # Seconds (0.0 to show full flight by default)
+ERROR_MARGIN_FRACTION = 0.005       # +/- 0.5% band around true apogee
+
+# Burnout phase parameters (must match sliding_window_generator_v2.py)
+BURNOUT_WINDOW_START = 5.0          # Earliest window END time
+BURNOUT_WINDOW_END = 8.0            # Latest window END time
+
+MODEL_FILENAMES = {
+    "mlp": "apogee_mlp_model.pth",
+    "random_forest": "apogee_random_forest.pkl",
+    "linear_regression": "apogee_linear_regression.pkl",
+}
+
+
+class ApogeeMLP(torch.nn.Module):
+    def __init__(self, input_dim):
+        super(ApogeeMLP, self).__init__()
+        self.model = torch.nn.Sequential(
+            torch.nn.Linear(input_dim, 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, 64),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, 1)
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Evaluate Apogee prediction models")
+    parser.add_argument(
+        "--model",
+        choices=list(MODEL_FILENAMES.keys()),
+        default="mlp",
+        help="Which trained model to evaluate",
+    )
+    parser.add_argument("--flight-index", type=int, default=DEFAULT_FLIGHT_INDEX)
+    parser.add_argument(
+        "--plot-max-time",
+        type=float,
+        default=DEFAULT_PLOT_MAX_TIME,
+        help="Seconds to display; set <=0 to show the full flight window.",
+    )
+    parser.add_argument("--timestep", type=float, default=DEFAULT_TIMESTEP)
+    parser.add_argument("--window-duration", type=float, default=DEFAULT_WINDOW_DURATION)
+    parser.add_argument("--stride-duration", type=float, default=DEFAULT_STRIDE_DURATION)
+    parser.add_argument("--total-flight-time", type=float, default=DEFAULT_TOTAL_FLIGHT_TIME)
+    parser.add_argument(
+        "--no-show",
+        action="store_true",
+        help="Skip opening an interactive plot window (useful when importing).",
+    )
+    return parser.parse_args()
+
+
+def load_model(model_type: str, input_dim: int, model_dir: Path):
+    model_path = model_dir / MODEL_FILENAMES[model_type]
+    if model_type == "mlp":
+        model = ApogeeMLP(input_dim=input_dim)
+        state_dict = torch.load(model_path, map_location="cpu")
+        model.load_state_dict(state_dict)
+        model.eval()
+        return model
+
+    return joblib.load(model_path)
+
+
+def run_inference(model_type: str, model, X_scaled: np.ndarray) -> np.ndarray:
+    if model_type == "mlp":
+        with torch.no_grad():
+            X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
+            preds_scaled = model(X_tensor).numpy()
+    else:
+        preds_scaled = model.predict(X_scaled).reshape(-1, 1)
+    return preds_scaled
+
+
+def _build_context(
+    timestep: float,
+    window_duration: float,
+    stride_duration: float,
+    total_flight_time: float,
+) -> Dict:
+    base_dir = Path(__file__).resolve().parent.parent
+    scalers_dir = base_dir / "data" / "scalers"
+    model_dir = base_dir / "models"
+    data_dir = base_dir / "data" / "processed"
+
+    window_size = int(window_duration / timestep)
+    stride = int(stride_duration / timestep)
+    
+    # Calculate samples per flight based on burnout phase windows
+    # Windows are generated with END times between BURNOUT_WINDOW_START and BURNOUT_WINDOW_END
+    min_start_idx = int(BURNOUT_WINDOW_START / timestep) - window_size
+    max_start_idx = int(BURNOUT_WINDOW_END / timestep) - window_size
+    samples_per_flight = len(range(max(0, min_start_idx), max_start_idx + 1, stride))
+    
+    # Time axis shows window END times (when prediction is made)
+    time_axis = np.array([
+        (max(0, min_start_idx) + i * stride + window_size) * timestep 
+        for i in range(samples_per_flight)
+    ])
+
+    input_scaler = joblib.load(scalers_dir / "apogee_input_scaler.pkl")
+    target_scaler = joblib.load(scalers_dir / "apogee_target_scaler.pkl")
+
+    df = pd.read_csv(data_dir / "sliding_test_by_flight.csv")
+    X = df.drop(columns=["Apogee"]).values
+    y_true = df["Apogee"].values.reshape(-1, 1)
+
+    return {
+        "base_dir": base_dir,
+        "model_dir": model_dir,
+        "df": df,
+        "X": X,
+        "y_true": y_true,
+        "input_scaler": input_scaler,
+        "target_scaler": target_scaler,
+        "window_size": window_size,
+        "stride": stride,
+        "samples_per_flight": samples_per_flight,
+        "time_axis": time_axis,
+    }
+
+
+def evaluate_model(
+    model_type: str,
+    flight_index: int = DEFAULT_FLIGHT_INDEX,
+    plot_max_time: Optional[float] = DEFAULT_PLOT_MAX_TIME,
+    timestep: float = DEFAULT_TIMESTEP,
+    window_duration: float = DEFAULT_WINDOW_DURATION,
+    stride_duration: float = DEFAULT_STRIDE_DURATION,
+    total_flight_time: float = DEFAULT_TOTAL_FLIGHT_TIME,
+    context: Optional[Dict] = None,
+    show_plot: bool = False,
+) -> Dict:
+    ctx = context or _build_context(
+        timestep=timestep,
+        window_duration=window_duration,
+        stride_duration=stride_duration,
+        total_flight_time=total_flight_time,
+    )
+
+    model = load_model(model_type, input_dim=ctx["X"].shape[1], model_dir=ctx["model_dir"])
+
+    X_scaled = ctx["input_scaler"].transform(ctx["X"])
+    y_pred_scaled = run_inference(model_type, model, X_scaled)
+    y_pred = ctx["target_scaler"].inverse_transform(y_pred_scaled)
+
+    mse = mean_squared_error(ctx["y_true"], y_pred)
+    rmse = float(np.sqrt(mse))
+
+    start_idx = flight_index * ctx["samples_per_flight"]
+    end_idx = start_idx + ctx["samples_per_flight"]
+
+    if start_idx >= len(y_pred):
+        raise ValueError(f"Flight index {flight_index} out of bounds.")
+
+    flight_preds = y_pred[start_idx:end_idx].flatten()
+    flight_true = ctx["y_true"][start_idx:end_idx].flatten()
+    target_apogee = float(flight_true[0])  # constant apogee per flight
+
+    error = np.abs(flight_preds - target_apogee)
+    mean_abs_error = float(np.mean(error))
+    max_error = float(np.max(error))
+
+    use_full_window = plot_max_time is None or plot_max_time <= 0
+    if use_full_window:
+        masked_time = ctx["time_axis"]
+        masked_preds = flight_preds
+    else:
+        mask = ctx["time_axis"] <= plot_max_time
+        masked_time = ctx["time_axis"][mask]
+        masked_preds = flight_preds[mask]
+        if len(masked_time) == 0:
+            masked_time = ctx["time_axis"]
+            masked_preds = flight_preds
+
+    # Avoid pyplot when used from a worker thread (e.g., Tkinter) to prevent GUI backend issues
+    if show_plot:
+        fig, ax = plt.subplots(figsize=(7.5, 4.2))
+    else:
+        fig = Figure(figsize=(7.5, 4.2))
+        ax = fig.add_subplot(111)
+    ax.plot(masked_time, masked_preds, color="#1e3a5f", marker="o", linestyle="-", label="Predicted Apogee", markersize=4)
+    ax.hlines(target_apogee, masked_time[0], masked_time[-1], colors="r", linestyles="--", label="True Apogee")
+
+    error_margin = ERROR_MARGIN_FRACTION * target_apogee
+    ax.fill_between(
+        masked_time,
+        target_apogee - error_margin,
+        target_apogee + error_margin,
+        color="r",
+        alpha=0.1,
+        label=f"±{ERROR_MARGIN_FRACTION * 100:.1f}% Margin",
+    )
+
+    ax.set_title(f"Apogee Prediction: Flight {flight_index} ({model_type})")
+    ax.set_xlabel("Time into Flight (s)")
+    ax.set_ylabel("Apogee (m)")
+    ax.set_xlim(min(masked_time), max(masked_time))
+    ax.legend(loc="lower right")
+    ax.grid(True, alpha=0.3)
+    plot_min = float(min(np.min(masked_preds), target_apogee - error_margin))
+    plot_max = float(max(np.max(masked_preds), target_apogee + error_margin))
+    ax.set_ylim(plot_min, plot_max)
+    fig.tight_layout()
+
+    if show_plot:
+        plt.show(block=True)
+
+    return {
+        "figure": fig,
+        "rmse": rmse,
+        "mean_abs_error": mean_abs_error,
+        "max_error": max_error,
+        "target_apogee": target_apogee,
+        "flight_index": flight_index,
+        "model_type": model_type,
+        "plot_min": plot_min,
+        "plot_max": plot_max,
+    }
+
+
+def evaluate_model_average(
+    model_type: str,
+    plot_max_time: Optional[float] = DEFAULT_PLOT_MAX_TIME,
+    timestep: float = DEFAULT_TIMESTEP,
+    window_duration: float = DEFAULT_WINDOW_DURATION,
+    stride_duration: float = DEFAULT_STRIDE_DURATION,
+    total_flight_time: float = DEFAULT_TOTAL_FLIGHT_TIME,
+    context: Optional[Dict] = None,
+    show_plot: bool = False,
+    use_feet: bool = False,
+) -> Dict:
+    """Evaluate model and compute average predictions across all flights."""
+    ctx = context or _build_context(
+        timestep=timestep,
+        window_duration=window_duration,
+        stride_duration=stride_duration,
+        total_flight_time=total_flight_time,
+    )
+
+    model = load_model(model_type, input_dim=ctx["X"].shape[1], model_dir=ctx["model_dir"])
+
+    X_scaled = ctx["input_scaler"].transform(ctx["X"])
+    y_pred_scaled = run_inference(model_type, model, X_scaled)
+    y_pred = ctx["target_scaler"].inverse_transform(y_pred_scaled).flatten()
+    y_true = ctx["y_true"].flatten()
+
+    # Unit conversion
+    unit_label = "m"
+    if use_feet:
+        y_pred = y_pred * 3.28084
+        y_true = y_true * 3.28084
+        unit_label = "ft"
+
+    # Calculate global metrics
+    mse = mean_squared_error(y_true, y_pred)
+    rmse = float(np.sqrt(mse))
+    global_mae = float(np.mean(np.abs(y_pred - y_true)))
+    global_max_error = float(np.max(np.abs(y_pred - y_true)))
+
+    # Reshape predictions by flight for averaging
+    samples_per_flight = ctx["samples_per_flight"]
+    num_flights = len(y_pred) // samples_per_flight
+    
+    # Truncate to full flights only
+    y_pred = y_pred[:num_flights * samples_per_flight]
+    y_true = y_true[:num_flights * samples_per_flight]
+
+    preds_by_flight = y_pred.reshape(num_flights, samples_per_flight)
+    true_by_flight = y_true.reshape(num_flights, samples_per_flight)
+
+    # Average predictions across all flights at each time step
+    mean_preds = np.mean(preds_by_flight, axis=0)
+    std_preds = np.std(preds_by_flight, axis=0)
+
+    # Apply time mask for plotting
+    use_full_window = plot_max_time is None or plot_max_time <= 0
+    if use_full_window:
+        masked_time = ctx["time_axis"]
+        masked_mean_preds = mean_preds
+    else:
+        mask = ctx["time_axis"] <= plot_max_time
+        masked_time = ctx["time_axis"][mask]
+        masked_mean_preds = mean_preds[mask] if len(mean_preds) >= len(mask) else mean_preds[:len(mask)][mask[:len(mean_preds)]]
+        if len(masked_time) == 0:
+            masked_time = ctx["time_axis"]
+            masked_mean_preds = mean_preds
+
+    avg_true_apogee = float(np.mean(true_by_flight[:, 0]))  # Average true apogee
+    # Keep error margin in native units scalar
+    error_margin = (ERROR_MARGIN_FRACTION * avg_true_apogee) if not use_feet else ((ERROR_MARGIN_FRACTION * (avg_true_apogee / 3.28084)) * 3.28084)
+    # Ideally simpler: ratio is unitless, so just fraction * val
+    error_margin = ERROR_MARGIN_FRACTION * avg_true_apogee
+
+    # Build figure
+    if show_plot:
+        fig, ax = plt.subplots(figsize=(7.5, 4.2))
+    else:
+        fig = Figure(figsize=(7.5, 4.2))
+        ax = fig.add_subplot(111)
+
+    ax.plot(masked_time, masked_mean_preds, color="#1e3a5f", marker="o", linestyle="-", 
+            label="Mean Predicted", markersize=4)
+    # Scaled removed: ax.fill_between(...)
+    ax.hlines(avg_true_apogee, masked_time[0], masked_time[-1], colors="r", linestyles="--", 
+              label="True Apogee")
+    ax.fill_between(
+        masked_time,
+        avg_true_apogee - error_margin,
+        avg_true_apogee + error_margin,
+        color="r",
+        alpha=0.1,
+        label=f"±{ERROR_MARGIN_FRACTION * 100:.1f}%",
+    )
+
+    # Shorten title
+    ax.set_title(f"{model_type} (Avg {num_flights} Flights)")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel(f"Apogee ({unit_label})")
+    ax.set_xlim(min(masked_time), max(masked_time))
+    ax.legend(loc="lower right")
+    ax.grid(True, alpha=0.3)
+    
+    # NARROW Y-AXIS: Use only mean predictions and error margin, ignore STD deviations
+    plot_min = float(min(np.min(masked_mean_preds), avg_true_apogee - error_margin))
+    plot_max = float(max(np.max(masked_mean_preds), avg_true_apogee + error_margin))
+    
+    # Add a tiny padding (5%) so points aren't exactly on edge
+    rng = plot_max - plot_min
+    if rng > 0:
+        plot_min -= rng * 0.05
+        plot_max += rng * 0.05
+
+    ax.set_ylim(plot_min, plot_max)
+    fig.tight_layout()
+
+    if show_plot:
+        plt.show(block=True)
+
+    return {
+        "figure": fig,
+        "rmse": rmse,
+        "mean_abs_error": global_mae,
+        "max_error": global_max_error,
+        "target_apogee": avg_true_apogee,
+        "num_flights": num_flights,
+        "model_type": model_type,
+        "plot_min": plot_min,
+        "plot_max": plot_max,
+    }
+
+def main():
+    args = parse_args()
+
+    plot_time = None if args.plot_max_time <= 0 else args.plot_max_time
+
+    ctx = _build_context(
+        timestep=args.timestep,
+        window_duration=args.window_duration,
+        stride_duration=args.stride_duration,
+        total_flight_time=args.total_flight_time,
+    )
+
+    print(f"Loading model '{args.model}' and evaluating flight {args.flight_index} ...")
+    result = evaluate_model(
+        args.model,
+        flight_index=args.flight_index,
+        plot_max_time=plot_time,
+        timestep=args.timestep,
+        window_duration=args.window_duration,
+        stride_duration=args.stride_duration,
+        total_flight_time=args.total_flight_time,
+        context=ctx,
+        show_plot=not args.no_show,
+    )
+
+    print(f"\n=== Analysis for Flight {args.flight_index} ===")
+    print(f"True Apogee: {result['target_apogee']:.2f} m")
+    print(f"Mean Absolute Error: {result['mean_abs_error']:.2f} m")
+    print(f"Max Error: {result['max_error']:.2f} m")
+    print(f"Global RMSE: {result['rmse']:.2f} meters")
+
+
+if __name__ == "__main__":
+    main()

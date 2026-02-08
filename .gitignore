@@ -3,10 +3,11 @@ __pycache__/
 *.pth
 .vscode/
 .DS_Store
-data/processed/sliding_train_by_flight.csv
-data/processed/sliding_test_by_flight.csv
+data/processed/*.csv
+data/raw/batch_dataset_v1.csv
 data/scalers/
 models/apogee_mlp_model.pth
 venv/
 old-datasets
 old-scripts
+serializer.log
