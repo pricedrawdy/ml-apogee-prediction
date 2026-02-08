@@ -1,104 +1,109 @@
 # Rocket Apogee Prediction
 
-This project trains a neural network to predict rocket apogee from flight telemetry. Sliding windows of recent data are used as input to a PyTorch model.
-
---- 1 --- Create a rocket in OpenRocket
-
---- 2 --- Use RocketSerializer to convert your OpenRocket into use with RocketPy
-
-install RocketSerializer and run:
-
-```bash
-ork2json --filepath <file.ork> --ork_jar <path/to/OpenRocket.jar> --output ./json_output
-```
-
-## Workflow Diagram
-
-![Workflow block diagram](block-diagrams/block_diagram.png)
-[Edit the diagram](block-diagrams/Workflow.drawio)
+This project trains machine learning models to predict rocket apogee from flight telemetry data. It uses a sliding window approach to analyze recent flight data and predict the final apogee.
 
 ## Quick Start
 
-1. Create and activate a virtual environment, then install dependencies:
+### 1. Environment Setup
 
+Create and activate a virtual environment, then install dependencies:
+
+**Windows (PowerShell):**
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+**macOS / Linux:**
 ```bash
-# macOS / Linux
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### 2. Workflow
+
+The project follows a numbered script workflow for data generation, processing, training, and analysis.
+
+**1. Data Generation**
+Generate a dataset of simulated flights using RocketPy. This creates `data/raw/batch_dataset_v1.csv`.
 ```bash
-# Windows (PowerShell)
-python -m venv venv
-venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python scripts/1_batch_simulation_creation.py
 ```
 
-2. Place your raw CSVs in `data/raw/`.
-
-3. Generate training windows:
-
+**2. Data Processing**
+Process the raw simulation data into sliding windows suitable for training. This creates training and testing CSVs in `data/processed/`.
 ```bash
-python scripts/sliding_window_generator_v2.py
+python scripts/2_sliding_window_generator.py
 ```
 
-4. Train the model:
-
+**3. Model Training**
+Train the machine learning models (MLP, Random Forest, Linear Regression). Models are saved to `models/`.
 ```bash
-python models/apogee_prediction_model_v1.py
+python scripts/3_model_creation.py
 ```
 
-5. Evaluate on the test set (supports MLP, Random Forest, and Linear Regression):
-
+**4. Testing**
+Evaluate the trained models on specific flights or the entire test set.
 ```bash
-python scripts/apogee_prediction_test_v1.1.py --model mlp
-# options: --model random_forest | linear_regression
-# show full flight window: --plot-max-time 0
+python scripts/4_model_testing.py --model mlp
+# Options: --model [mlp|random_forest|linear_regression]
+# Use --help for more options
 ```
 
-6. Launch the cross-platform GUI (plots render inside the window):
+**5. Analysis**
+Perform detailed analysis of model performance, including overfitting checks and error distribution over time.
+```bash
+python scripts/5_model_analysis.py
+```
+
+**6. Visualization**
+Generate comprehensive visualization plots comparing all models. plots are saved to `visualizations/`.
+```bash
+python scripts/6_visualization_suite.py
+```
+
+### 3. GUI Application
+
+A Tkinter-based GUI is provided to run these steps and visualize predictions interactively.
 
 ```bash
 python gui.py
 ```
-
-Use the “Run Apogee Tests (MLP / RF / Regression)” button to generate and view all three model plots side by side, with status/logging below.
+*   **Generate Data**: options to run the Simulation and Sliding Window scripts.
+*   **Train**: Button to retrain models.
+*   **Predict**: Run the "Apogee Tests" to visualize predictions for a specific flight or average performance.
 
 ## Project Structure
 
 ```
 .
 ├── data/
-│   ├── raw/                              # Original flight CSVs
-│   ├── processed/                        # Train/test windows
-│   └── scalers/                          # Saved scaler files
+│   ├── raw/                              # Original simulated flight CSVs
+│   ├── processed/                        # Sliding window training/test sets
+│   └── scalers/                          # Saved scaler files for data normalization
 ├── models/
-│   └── apogee_prediction_model_v1.py     # Training script
+│   ├── apogee_mlp_model.pth              # PyTorch MLP model
+│   ├── apogee_random_forest.pkl          # Scikit-learn Random Forest
+│   └── apogee_linear_regression.pkl      # Scikit-learn Linear Regression
 ├── scripts/
-│   ├── apogee_prediction_test_v1.1.py   # Evaluate predictions
-│   ├── batch_simulation_creation.py     # Create simulation data
-│   └── sliding_window_generator_v2.py   # Generate windows
-├── gui.py                               # Tkinter GUI with embedded plots for all models
-├── notebooks/                           # Example Jupyter notebooks for testing
-└── deploy/                              # Real-time prediction pipeline
+│   ├── 1_batch_simulation_creation.py    # Generate flight data with RocketPy
+│   ├── 2_sliding_window_generator.py     # Create sliding windows from data
+│   ├── 3_model_creation.py               # Train and save models
+│   ├── 4_model_testing.py                # Evaluate single models
+│   ├── 5_model_analysis.py               # Deep dive performance analysis
+│   └── 6_visualization_suite.py          # Generate comparison plots
+├── gui.py                                # Main GUI application
+├── requirements.txt                      # Python dependencies
+└── README.md                             # This file
 ```
 
-## Model Overview
+## Model Info
 
-- Input: 2.5 s window of telemetry
-- Architecture: 3-layer MLP
-- Output: Predicted apogee (meters)
-
-
----
-
-## Contributing
-
-This repository is used for academic research. Contributions are welcome via pull requests.
-
-## Environment
-
-- Python 3.10+
-- PyTorch 2.0+
-- scikit-learn 1.0+
+*   **Input**: 2.5s window of telemetry (Altitude, Velocity, Acceleration, etc.)
+*   **Target**: Final Apogee Altitude
+*   **Models**:
+    *   **MLP**: 3-layer Neural Network
+    *   **Random Forest**: Ensemble regressor
+    *   **Linear Regression**: Baseline linear model
