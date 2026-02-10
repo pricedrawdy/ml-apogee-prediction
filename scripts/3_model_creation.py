@@ -26,13 +26,19 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
 
 # Paths
 CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "processed" / "sliding_train_by_flight.csv"
 SCALERS_DIR = Path(__file__).resolve().parent.parent / "data" / "scalers"
 MODEL_DIR = Path(__file__).resolve().parent.parent / "models"
+ANALYSIS_DIR = Path(__file__).resolve().parent.parent / "analysis_results"
+# Constants
+M_TO_FT = 3.28084
+
 SCALERS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
+ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ApogeeMLP(nn.Module):
@@ -101,11 +107,14 @@ def train_mlp(
 
     epochs = 50
     batch_size = 64
+    
+    train_losses = []
+    val_losses = []
 
     for epoch in range(epochs):
         model.train()
         permutation = torch.randperm(train_tensor.size(0), device=device)
-        epoch_loss = 0.0
+        batch_losses = []
 
         for i in range(0, train_tensor.size(0), batch_size):
             indices = permutation[i : i + batch_size]
@@ -118,30 +127,88 @@ def train_mlp(
             loss.backward()
             optimizer.step()
 
-            epoch_loss += loss.item()
+            batch_losses.append(loss.item())
+
+        epoch_loss = sum(batch_losses) / len(batch_losses)
+        train_losses.append(epoch_loss)
 
         model.eval()
         with torch.no_grad():
             val_outputs = model(val_tensor)
             val_loss = criterion(val_outputs, val_targets).item()
+            val_losses.append(val_loss)
 
         print(
             f"Epoch {epoch + 1}/{epochs}, Train Loss: {epoch_loss:.4f}, Val Loss: {val_loss:.4f}"
         )
 
+    plt.figure(figsize=(10, 6))
+    plt.plot(train_losses, label='Training Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.title('MLP Model Training Performance')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss (MSE)')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(ANALYSIS_DIR / "mlp_training_loss.png")
+    plt.close()
+    print(f"✅ Saved MLP training plot to {ANALYSIS_DIR / 'mlp_training_loss.png'}")
+
     torch.save(model.state_dict(), MODEL_DIR / "apogee_mlp_model.pth")
     print("✅ Saved MLP model to apogee_mlp_model.pth")
 
-    val_rmse = _inverse_rmse(
-        y_val, val_outputs.detach().cpu().numpy().reshape(-1, 1), target_scaler
+    val_rmse = evaluate_model(
+        y_val, 
+        val_outputs.detach().cpu().numpy(), 
+        target_scaler, 
+        "MLP"
     )
     return val_rmse
 
 
-def _inverse_rmse(y_true_scaled: np.ndarray, y_pred_scaled: np.ndarray, target_scaler: StandardScaler) -> float:
-    """Compute RMSE in original units using the shared target scaler."""
-    y_true = target_scaler.inverse_transform(y_true_scaled.reshape(-1, 1))
-    y_pred = target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1))
+def evaluate_model(
+    y_true_scaled: np.ndarray, 
+    y_pred_scaled: np.ndarray, 
+    target_scaler: StandardScaler, 
+    model_name: str
+) -> float:
+    """Compute RMSE and generate evaluation plots in imperial units (feet)."""
+    y_true_m = target_scaler.inverse_transform(y_true_scaled.reshape(-1, 1))
+    y_pred_m = target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1))
+    
+    y_true = y_true_m * M_TO_FT
+    y_pred = y_pred_m * M_TO_FT
+
+    # 1. Prediction vs Actual Plot
+    plt.figure(figsize=(10, 6))
+    plt.scatter(y_true, y_pred, alpha=0.3)
+    min_val = min(y_true.min(), y_pred.min())
+    max_val = max(y_true.max(), y_pred.max())
+    plt.plot([min_val, max_val], [min_val, max_val], 'r--', lw=2, label='Perfect Prediction')
+    plt.xlabel('Actual Apogee (ft)')
+    plt.ylabel('Predicted Apogee (ft)')
+    plt.title(f'{model_name}: Prediction vs Actual')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(ANALYSIS_DIR / f"{model_name.lower().replace(' ', '_')}_pred_vs_actual.png")
+    plt.close()
+
+    # 2. Residual Plot
+    residuals = y_true - y_pred
+    plt.figure(figsize=(10, 6))
+    plt.scatter(y_pred, residuals, alpha=0.3)
+    plt.axhline(0, color='r', linestyle='--', lw=2)
+    plt.xlabel('Predicted Apogee (ft)')
+    plt.ylabel('Residuals (ft)')
+    plt.title(f'{model_name}: Residual Analysis')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(ANALYSIS_DIR / f"{model_name.lower().replace(' ', '_')}_residuals.png")
+    plt.close()
+    
+    print(f"✅ Saved plots (imperial) for {model_name}")
+
     return float(np.sqrt(mean_squared_error(y_true, y_pred)))
 
 
@@ -163,7 +230,7 @@ def train_random_forest(
     model.fit(X_train, y_train.ravel())
 
     val_pred_scaled = model.predict(X_val)
-    val_rmse = _inverse_rmse(y_val, val_pred_scaled, target_scaler)
+    val_rmse = evaluate_model(y_val, val_pred_scaled, target_scaler, "Random Forest")
 
     joblib.dump(model, MODEL_DIR / "apogee_random_forest.pkl")
     print("✅ Saved Random Forest model to apogee_random_forest.pkl")
@@ -182,7 +249,7 @@ def train_linear_regression(
     model.fit(X_train, y_train)
 
     val_pred_scaled = model.predict(X_val)
-    val_rmse = _inverse_rmse(y_val, val_pred_scaled, target_scaler)
+    val_rmse = evaluate_model(y_val, val_pred_scaled, target_scaler, "Linear Regression")
 
     joblib.dump(model, MODEL_DIR / "apogee_linear_regression.pkl")
     print("✅ Saved Linear Regression model to apogee_linear_regression.pkl")
@@ -195,13 +262,13 @@ def main():
     print("Starting training for Apogee models...")
 
     mlp_rmse = train_mlp(X_train, X_val, y_train, y_val, target_scaler)
-    print(f"MLP validation RMSE (meters): {mlp_rmse:.2f}")
+    print(f"MLP validation RMSE (feet): {mlp_rmse:.2f}")
 
     rf_rmse = train_random_forest(X_train, X_val, y_train, y_val, target_scaler)
-    print(f"Random Forest validation RMSE (meters): {rf_rmse:.2f}")
+    print(f"Random Forest validation RMSE (feet): {rf_rmse:.2f}")
 
     lr_rmse = train_linear_regression(X_train, X_val, y_train, y_val, target_scaler)
-    print(f"Linear Regression validation RMSE (meters): {lr_rmse:.2f}")
+    print(f"Linear Regression validation RMSE (feet): {lr_rmse:.2f}")
 
 
 if __name__ == "__main__":

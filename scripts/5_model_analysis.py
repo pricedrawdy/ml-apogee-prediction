@@ -19,6 +19,9 @@ data_dir = root_dir / "data" / "processed"
 output_dir = root_dir / "analysis_results"
 output_dir.mkdir(parents=True, exist_ok=True)
 
+# Constants
+M_TO_FT = 3.28084
+
 # === Load scalers ===
 input_scaler = joblib.load(scalers_dir / "apogee_input_scaler.pkl")
 target_scaler = joblib.load(scalers_dir / "apogee_target_scaler.pkl")
@@ -81,18 +84,18 @@ def check_overfitting():
     y_train_true, y_train_pred = _predict_from_df(train_df)
     y_test_true, y_test_pred = _predict_from_df(test_df)
 
-    train_rmse = np.sqrt(mean_squared_error(y_train_true, y_train_pred))
-    test_rmse = np.sqrt(mean_squared_error(y_test_true, y_test_pred))
-    train_mae = mean_absolute_error(y_train_true, y_train_pred)
-    test_mae = mean_absolute_error(y_test_true, y_test_pred)
+    train_rmse = np.sqrt(mean_squared_error(y_train_true, y_train_pred)) * M_TO_FT
+    test_rmse = np.sqrt(mean_squared_error(y_test_true, y_test_pred)) * M_TO_FT
+    train_mae = mean_absolute_error(y_train_true, y_train_pred) * M_TO_FT
+    test_mae = mean_absolute_error(y_test_true, y_test_pred) * M_TO_FT
 
-    print("=== Overfitting Analysis ===")
-    print(f"Training RMSE: {train_rmse:.2f} m")
-    print(f"Testing  RMSE: {test_rmse:.2f} m")
-    print(f"RMSE gap:      {test_rmse - train_rmse:.2f} m")
-    print(f"Training MAE:  {train_mae:.2f} m")
-    print(f"Testing  MAE:  {test_mae:.2f} m")
-    print(f"MAE gap:       {test_mae - train_mae:.2f} m")
+    print("=== Overfitting Analysis (Imperial) ===")
+    print(f"Training RMSE: {train_rmse:.2f} ft")
+    print(f"Testing  RMSE: {test_rmse:.2f} ft")
+    print(f"RMSE gap:      {test_rmse - train_rmse:.2f} ft")
+    print(f"Training MAE:  {train_mae:.2f} ft")
+    print(f"Testing  MAE:  {test_mae:.2f} ft")
+    print(f"MAE gap:       {test_mae - train_mae:.2f} ft")
 
     # FIX: return the test arrays computed above
     return test_df, y_test_true, y_test_pred
@@ -136,8 +139,8 @@ def analyze_flight_predictions(test_df: pd.DataFrame, y_true: np.ndarray, y_pred
         start = flight_idx * samples_per_flight
         end = start + samples_per_flight
 
-        preds_i = y_pred[start:end].flatten()
-        true_apogee = y_true[start][0]  # same target per flight across windows
+        preds_i = y_pred[start:end].flatten() * M_TO_FT
+        true_apogee = y_true[start][0] * M_TO_FT # same target per flight across windows
 
         # Restrict to time window for analysis
         preds_i = preds_i[time_mask]
@@ -177,8 +180,8 @@ def analyze_flight_predictions(test_df: pd.DataFrame, y_true: np.ndarray, y_pred
     for flight_idx in range(len(y_true) // samples_per_flight):
         s = flight_idx * samples_per_flight
         e = s + samples_per_flight
-        preds_i = y_pred[s:e].flatten()[time_mask]
-        true_apogee = y_true[s][0]
+        preds_i = y_pred[s:e].flatten()[time_mask] * M_TO_FT
+        true_apogee = y_true[s][0] * M_TO_FT
         signed_errors.append(preds_i - true_apogee)
     signed_errors = np.vstack(signed_errors) if signed_errors else np.empty((0, len(filtered_time)))
     mean_signed = np.mean(signed_errors, axis=0)
@@ -194,7 +197,7 @@ def analyze_flight_predictions(test_df: pd.DataFrame, y_true: np.ndarray, y_pred
     plt.fill_between(filtered_time, lower, upper, color='b', alpha=0.2, label='±1 Std')
     plt.title("Apogee Prediction Mean Absolute Error vs Time")
     plt.xlabel("Time into Flight (s)")
-    plt.ylabel("Absolute Error (m)")
+    plt.ylabel("Absolute Error (ft)")
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
@@ -208,7 +211,7 @@ def analyze_flight_predictions(test_df: pd.DataFrame, y_true: np.ndarray, y_pred
     plt.axhline(0, color='k', lw=1)
     plt.title("Apogee Prediction Bias vs Time")
     plt.xlabel("Time into Flight (s)")
-    plt.ylabel("Signed Error (m)")
+    plt.ylabel("Signed Error (ft)")
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()
