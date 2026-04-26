@@ -32,8 +32,14 @@ Generate a dataset of simulated flights using RocketPy. This creates `data/raw/b
 python scripts/1_batch_simulation_creation.py
 ```
 
+**1.5. Noise Injection**
+Add realistic sensor noise (accelerometer, barometer, IMU noise + minor outlier spikes) to the clean simulation data. This creates `data/raw/batch_dataset_v1_noisy.csv`.
+```bash
+python scripts/1.5_noise_injection.py
+```
+
 **2. Data Processing**
-Process the raw simulation data into sliding windows suitable for training. This creates training and testing CSVs in `data/processed/`.
+Process the noisy simulation data into sliding windows suitable for training. This creates training and testing CSVs in `data/processed/`.
 ```bash
 python scripts/2_sliding_window_generator.py
 ```

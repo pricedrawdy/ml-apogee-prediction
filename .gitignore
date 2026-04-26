@@ -5,10 +5,12 @@ __pycache__/
 .vscode/
 .DS_Store
 data/processed/*.csv
-data/raw/batch_dataset_v1.csv
+data/raw/*.csv
 data/scalers/
-models/apogee_mlp_model.pth
+models/*.pth
 venv/
-old-datasets
-old-scripts
+old-datasets/
+old-scripts/
 serializer.log
+outgoing_files.txt
+last_commit_files.txt

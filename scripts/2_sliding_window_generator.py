@@ -20,7 +20,8 @@ from sklearn.model_selection import train_test_split
 
 # %%
 # === CONFIGURATION ===
-input_csv = "batch_dataset_v1.csv"  # The original dataset file
+input_csv = "batch_dataset_v1_noisy.csv"  # Noisy sensor-augmented dataset (from 1.5_noise_injection.py)
+# input_csv = "batch_dataset_v1.csv"  # Clean dataset (from 1.4_batch_dataset_generator.py)
 window_seconds = 2.5  # Length of input buffer (in seconds)
 step_seconds = 0.25   # Slide forward every N seconds
 timestep_interval = 0.025  # How far apart each original timestep is (s)
