@@ -74,17 +74,29 @@ float alt_agl    = 0.0f;    // altitude above ground level (m)
 float v_up       = 0.0f;    // upward velocity (positive = ascending)
 float h_vel      = 0.0f;
 
+// Sensor drift accumulators (random walk, matching 1.5_noise_injection.py)
+// drift_step = drift_intensity * sqrt(DT)
+const float DRIFT_STEP_VVEL = 0.3f * 0.1581f;  // 0.3 * sqrt(0.025)
+const float DRIFT_STEP_TVEL = 0.3f * 0.1581f;
+const float DRIFT_STEP_ALT  = 0.2f * 0.1581f;
+float drift_vvel = 0.0f;
+float drift_tvel = 0.0f;
+float drift_alt  = 0.0f;
+
 unsigned long last_step_ms    = 0;
 unsigned long countdown_start = 0;
 int countdown_last            = -1;
 
 // ── Reset ─────────────────────────────────────────────────────────────────────
 void reset_flight() {
-  t_flight = 0.0f;
-  alt_agl  = 0.0f;
-  v_up     = 0.0f;
-  h_vel    = 0.0f;
-  _seed    = (unsigned long) millis();
+  t_flight   = 0.0f;
+  alt_agl    = 0.0f;
+  v_up       = 0.0f;
+  h_vel      = 0.0f;
+  drift_vvel = 0.0f;
+  drift_tvel = 0.0f;
+  drift_alt  = 0.0f;
+  _seed      = (unsigned long) millis();
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -170,19 +182,24 @@ void loop() {
   float dynp_c    = 0.5f * rho * speed_new * speed_new;
   float mach_c    = speed_new / a_snd;
 
-  // ── OUTPUT (RocketPy sign conventions!) ──────────────────────────────────
-  // v_vel:  NEGATIVE during ascent (negate v_up_new)
-  // v_acc:  POSITIVE during powered flight (accel is already positive then)
-  // altitude: AGL (starts at 0)
-  float out_vvel = -(v_up_new + gauss(1.5f));   // negate + noise
-  float out_vacc = accel + gauss(0.5f);          // same sign + noise
-  float out_alt  = alt_new + gauss(1.0f);
-  float out_tvel = fabs(speed_new + gauss(1.5f));
-  float out_hvel = h_vel + gauss(1.0f);
+  // ── SENSOR NOISE + DRIFT (matching 1.5_noise_injection.py) ───────────────
+  // Accumulate random-walk drift on channels that have it in training data
+  drift_vvel += gauss(DRIFT_STEP_VVEL);
+  drift_tvel += gauss(DRIFT_STEP_TVEL);
+  drift_alt  += gauss(DRIFT_STEP_ALT);
+
+  // v_vel:  NEGATIVE during ascent (negate v_up_new) + gaussian + drift
+  // v_acc:  POSITIVE during powered flight + gaussian (no drift)
+  // altitude: AGL (starts at 0) + gaussian + drift
+  float out_vvel  = -(v_up_new + gauss(1.5f) + drift_vvel);
+  float out_vacc  = accel + gauss(0.5f);
+  float out_alt   = alt_new + gauss(1.0f) + drift_alt;
+  float out_tvel  = fabs(speed_new + gauss(1.5f) + drift_tvel);
+  float out_hvel  = h_vel + gauss(1.0f);
   float out_pitch = pitch_c + gauss(0.5f);
-  float out_dynp = dynp_c * (1.0f + gauss(0.02f));
-  float out_mach = mach_c * (1.0f + gauss(0.015f));
-  float out_pres = P + gauss(20.0f);
+  float out_dynp  = dynp_c * (1.0f + gauss(0.02f));
+  float out_mach  = mach_c * (1.0f + gauss(0.015f));
+  float out_pres  = P + gauss(20.0f);
 
   Serial.print(t_flight, 3); Serial.print(',');
   Serial.print(out_alt,  2); Serial.print(',');
