@@ -377,13 +377,17 @@ def run_demo(
                 _play("prediction_beep.wav", audio_ok)
 
             # ── Apogee reached ─────────────────────────────────────────────
-            t_now = step["t"]
-            speed = abs(step["v_vel"])
-            if t_now > burn_time + 2.0 and speed < 5.0:
-                print()
-                _stop(motor_ch)
-                _play("apogee_beep.wav", audio_ok)
-                break
+            # In serial mode, ArduinoReader.__iter__ terminates when it
+            # receives "# APOGEE alt=Xm" from the Arduino — don't break
+            # early here, otherwise we miss parsing the true apogee.
+            if not use_serial:
+                t_now = step["t"]
+                speed = abs(step["v_vel"])
+                if t_now > burn_time + 2.0 and speed < 5.0:
+                    print()
+                    _stop(motor_ch)
+                    _play("apogee_beep.wav", audio_ok)
+                    break
 
     except KeyboardInterrupt:
         print(f"\n{C.RED}Aborted by user.{C.RESET}")

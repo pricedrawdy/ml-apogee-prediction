@@ -24,8 +24,8 @@
 const float G         = 9.80665f;
 const float DT        = 0.025f;      // seconds per step
 const float BURN_TIME = 4.70f;       // s
-// Calibrated to produce ~3100 m AGL apogee (matching training data)
-const float THRUST    = 450.0f;      // N  (reduced from 1800 to match training range)
+// Calibrated to produce ~3100 m AGL apogee (~10,200 ft, matching training data)
+const float THRUST    = 540.0f;      // N  (tuned for ~3100 m apogee)
 const float MASS_WET  = 7.00f;       // kg
 const float PROP_MASS = 1.80f;       // kg
 const float CD        = 0.45f;
