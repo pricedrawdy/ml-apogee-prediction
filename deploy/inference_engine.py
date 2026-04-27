@@ -11,8 +11,13 @@ No sliding window CSV is needed — just the saved .pkl / .pth files and scalers
 from __future__ import annotations
 
 import time
+import warnings
 from pathlib import Path
 from typing import Literal
+
+# Suppress sklearn version mismatch warning (scalers saved with different version)
+warnings.filterwarnings("ignore", message=".*InconsistentVersionWarning.*")
+warnings.filterwarnings("ignore", message=".*Trying to unpickle estimator.*")
 
 import joblib
 import numpy as np
