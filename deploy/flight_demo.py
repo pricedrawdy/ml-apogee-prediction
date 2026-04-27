@@ -177,18 +177,62 @@ class ArduinoReader:
     FIELDS = ("t", "altitude", "v_vel", "v_acc", "t_vel",
               "h_vel", "pitch", "dynp", "mach", "pressure")
 
-    def __init__(self, port: str, baud: int):
+    def __init__(self, port: str, baud: int, debug: bool = False):
         if not _SERIAL_OK:
             raise ImportError("pyserial not installed: pip install pyserial")
-        self._ser = pyserial.Serial(port, baud, timeout=2.0)
+        self._ser   = pyserial.Serial(port, baud, timeout=5.0)
+        self._debug = debug
+        self.arduino_apogee_m = 0.0   # parsed from '# APOGEE alt=Xm'
         print(f"[Serial] Connected: {port} @ {baud} baud")
-        time.sleep(2.0)
-        self._ser.flushInput()
+        # Opening the port triggers DTR reset on most Arduinos.
+        # Give it time to boot — do NOT flush the buffer (that eats # READY).
+        time.sleep(2.5)
+        # Handshake: read until we see '# READY', then send 'G'
+        print("[Serial] Waiting for Arduino READY signal ...")
+        deadline = time.time() + 15.0
+        ready = False
+        while time.time() < deadline:
+            raw = self._ser.readline()
+            if not raw:
+                continue
+            line = raw.decode("utf-8", errors="replace").strip()
+            print(f"  [Arduino] {line}")
+            if "READY" in line:
+                ready = True
+                break
+        if not ready:
+            print("[Serial] WARNING: No READY signal — sending G anyway")
+        self._ser.write(b"G\n")
+        self._ser.flush()
+        print("[Serial] 'G' sent — Arduino starting countdown ...")
+        self._ser.timeout = None   # switch to blocking for flight stream
 
     def __iter__(self):
-        for raw in self._ser:
+        """Yield one telemetry dict per CSV line.  Blocks until data arrives."""
+        while True:
+            try:
+                raw = self._ser.readline()
+            except Exception as e:
+                print(f"\n[Serial] Read error: {e}")
+                break
+            if not raw:
+                continue
             line = raw.decode("utf-8", errors="replace").strip()
-            if not line or line.startswith("#"):
+            if self._debug:
+                print(f"  [RAW] {line}")
+            if not line:
+                continue
+            if line.startswith("#"):
+                print(f"  {C.GRAY}[Arduino] {line[2:].strip()}{C.RESET}")
+                # Parse true apogee from Arduino's APOGEE announcement
+                if "APOGEE" in line:
+                    try:
+                        # Format: '# APOGEE alt=1234.5m'
+                        alt_str = line.split("alt=")[1].replace("m", "").strip()
+                        self.arduino_apogee_m = float(alt_str)
+                    except (IndexError, ValueError):
+                        pass
+                    break   # stop iterating
                 continue
             parts = line.split(",")
             if len(parts) < len(self.FIELDS):
@@ -201,7 +245,10 @@ class ArduinoReader:
                 continue
 
     def close(self):
-        self._ser.close()
+        try:
+            self._ser.close()
+        except Exception:
+            pass
 
 
 # ── Build inference window from rolling history ───────────────────────────────
@@ -241,29 +288,32 @@ def _window_from_history(history: list[dict]) -> np.ndarray:
 
 # ── Main demo ─────────────────────────────────────────────────────────────────
 def run_demo(
-    model_type:   str       = "mlp",
-    flight_index: int       = 0,
-    no_audio:     bool      = False,
+    model_type:   str        = "mlp",
+    flight_index: int        = 0,
+    no_audio:     bool       = False,
     serial_port:  str | None = None,
-    baud:         int       = 115200,
+    baud:         int        = 115200,
+    debug:        bool       = False,
 ) -> None:
 
     audio_ok = (not no_audio) and _init_audio()
 
     # ── Load flight data ───────────────────────────────────────────────────
     if serial_port:
-        # Arduino mode — use a reference flight for metadata only
-        profile = FlightProfile(flight_index=flight_index)
-        demo = create_demo_flight(profile)
-        source = ArduinoReader(serial_port, baud)
-        use_serial = True
+        # Arduino mode — no dataset CSV needed on the Pi.
+        # The Arduino sketch announces its own apogee via "# APOGEE alt=Xm";
+        # we use a placeholder until that line arrives.
+        reader      = ArduinoReader(serial_port, baud, debug=debug)
+        source      = reader
+        use_serial  = True
+        true_apogee = 0.0   # updated from Arduino comment line at end
+        burn_time   = 4.70  # nominal (Arduino sketch hardcodes this)
     else:
-        demo = DemoFlight(flight_index=flight_index)
-        source = demo.stream()
-        use_serial = False
-
-    true_apogee = demo.true_apogee_m
-    burn_time   = demo.burn_time
+        demo        = DemoFlight(flight_index=flight_index)
+        source      = demo.stream()
+        use_serial  = False
+        true_apogee = demo.true_apogee_m
+        burn_time   = demo.burn_time
 
     banner("ROCKET APOGEE PREDICTOR  --  DEMO FLIGHT", C.CYAN)
     status("Model",           model_type.upper())
@@ -344,17 +394,25 @@ def run_demo(
             source.close()
 
     # ── Summary ───────────────────────────────────────────────────────────
+    # In serial mode, pick up the true apogee the Arduino reported
+    if use_serial and hasattr(source, 'arduino_apogee_m') and source.arduino_apogee_m > 0:
+        true_apogee = source.arduino_apogee_m
+
     banner("FLIGHT SUMMARY", C.CYAN)
-    status("True Apogee",
-           f"{true_apogee:.1f} m  ({true_apogee * 3.28084:.0f} ft)", C.YELLOW)
+    if true_apogee > 0:
+        status("True Apogee",
+               f"{true_apogee:.1f} m  ({true_apogee * 3.28084:.0f} ft)", C.YELLOW)
+    else:
+        status("True Apogee", "Unknown (Arduino did not report)", C.YELLOW)
 
     if prediction_result:
-        err_m  = prediction_result.apogee_m - true_apogee
-        err_pc = (err_m / true_apogee) * 100.0
-        col = C.GREEN if abs(err_pc) < 2.0 else C.ORANGE if abs(err_pc) < 5.0 else C.RED
         status("Predicted",
-               f"{prediction_result.apogee_m:.1f} m  ({prediction_result.apogee_ft:.0f} ft)", col)
-        status("Error",    f"{err_m:+.1f} m  ({err_pc:+.2f}%)", col)
+               f"{prediction_result.apogee_m:.1f} m  ({prediction_result.apogee_ft:.0f} ft)", C.GREEN)
+        if true_apogee > 0:
+            err_m  = prediction_result.apogee_m - true_apogee
+            err_pc = (err_m / true_apogee) * 100.0
+            col = C.GREEN if abs(err_pc) < 2.0 else C.ORANGE if abs(err_pc) < 5.0 else C.RED
+            status("Error",    f"{err_m:+.1f} m  ({err_pc:+.2f}%)", col)
         status("Latency",  f"{prediction_result.elapsed_ms:.1f} ms")
     else:
         status("Prediction", "Not completed")
@@ -372,8 +430,10 @@ def _parse() -> argparse.Namespace:
     p.add_argument("--no-audio", action="store_true",
                    help="Disable audio playback")
     p.add_argument("--serial", metavar="PORT", default=None,
-                   help="Arduino serial port, e.g. /dev/ttyUSB0")
+                   help="Arduino serial port, e.g. /dev/ttyACM0")
     p.add_argument("--baud",   type=int, default=115200)
+    p.add_argument("--debug",  action="store_true",
+                   help="Print every raw serial line (useful for diagnosing serial issues)")
     return p.parse_args()
 
 
@@ -385,4 +445,5 @@ if __name__ == "__main__":
         no_audio     = args.no_audio,
         serial_port  = args.serial,
         baud         = args.baud,
+        debug        = args.debug,
     )
