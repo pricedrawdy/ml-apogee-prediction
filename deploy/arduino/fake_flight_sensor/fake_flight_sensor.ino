@@ -1,5 +1,8 @@
 /*
-  fake_flight_sensor.ino  v3.0
+ Author: Price Drawdy
+ Date: 04/25/26  
+
+fake_flight_sensor.ino  v3.0
   ============================
   Streams synthetic rocket telemetry over USB Serial in CSV format,
   calibrated to match the RocketPy training data distribution.
