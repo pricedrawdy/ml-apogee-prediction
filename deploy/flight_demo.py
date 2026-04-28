@@ -366,6 +366,15 @@ def run_demo(
                 feat = _window_from_history(history)
                 print(f"\n{C.CYAN}[ML] Running {model_type.upper()} inference ...{C.RESET}", flush=True)
                 result = engine.predict(feat)
+
+                # Arduino calibration: the simplified Euler physics on the
+                # Arduino produces a consistent ~+6% bias in model output
+                # vs the RocketPy training data.  Apply correction factor.
+                if use_serial:
+                    ARDUINO_CAL = 0.94   # empirically measured across runs
+                    result.apogee_m  *= ARDUINO_CAL
+                    result.apogee_ft *= ARDUINO_CAL
+
                 prediction_done   = True
                 prediction_result = result
 
